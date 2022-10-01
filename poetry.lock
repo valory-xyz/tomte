@@ -131,7 +131,7 @@ name = "click"
 version = "8.0.2"
 description = "Composable command line interface toolkit"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -230,7 +230,7 @@ name = "distlib"
 version = "0.3.6"
 description = "Distribution utilities"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -287,7 +287,7 @@ name = "filelock"
 version = "3.8.0"
 description = "A platform independent file lock."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.7"
 
 [package.extras]
@@ -724,7 +724,7 @@ name = "platformdirs"
 version = "2.5.2"
 description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.7"
 
 [package.extras]
@@ -1004,7 +1004,7 @@ name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -1072,7 +1072,7 @@ name = "toml"
 version = "0.10.2"
 description = "Python Library for Tom's Obvious, Minimal Language"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -1088,7 +1088,7 @@ name = "tox"
 version = "3.24.4"
 description = "tox is a generic virtualenv management and test command line tool"
 category = "main"
-optional = false
+optional = true
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 
 [package.dependencies]
@@ -1140,7 +1140,7 @@ name = "virtualenv"
 version = "20.16.5"
 description = "Virtual Python Environment builder"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -1197,7 +1197,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 
 [extras]
 bandit = ["bandit"]
-black = ["black"]
+black = ["black", "click"]
 darglint = ["darglint"]
 docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "markdown", "bs4", "Pygments"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle"]
@@ -1206,12 +1206,13 @@ mypy = ["mypy"]
 pylint = ["pylint"]
 safety = ["safety"]
 tests = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-randomly", "pytest-rerunfailures"]
+tox = ["tox"]
 vulture = ["vulture"]
 
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "099dcda52a631d50b229a247c0a26ebc371cb69e9dfb2fab1efabb89937a3bca"
+content-hash = "685cb494b9ae09eb9cdd3346df4dff74f0f88a827c5f6d6ea189a391de5e0335"
 
 [metadata.files]
 appdirs = []
