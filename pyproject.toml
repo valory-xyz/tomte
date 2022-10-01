@@ -46,6 +46,7 @@ mypy = ["mypy"]
 safety = ["safety"]
 darglint = ["darglint"]
 vulture = ["vulture"]
+pylint = ["pylint"]
 docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "markdown", "bs4", "Pygments"]
 tests = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-randomly", "pytest-rerunfailures"]
 

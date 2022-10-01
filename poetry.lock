@@ -1203,6 +1203,7 @@ docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle"]
 isort = ["isort"]
 mypy = ["mypy"]
+pylint = ["pylint"]
 safety = ["safety"]
 tests = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-randomly", "pytest-rerunfailures"]
 vulture = ["vulture"]
@@ -1210,7 +1211,7 @@ vulture = ["vulture"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "c703c18ddd16d05007628e0ab97bd659cf0ff8c80412ce62e6699220bac53117"
+content-hash = "099dcda52a631d50b229a247c0a26ebc371cb69e9dfb2fab1efabb89937a3bca"
 
 [metadata.files]
 appdirs = []
