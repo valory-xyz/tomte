@@ -2101,9 +2101,9 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 
 [extras]
 bandit = ["bandit"]
-black = ["black", "click"]
+black = ["black"]
 darglint = ["darglint"]
-docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "Markdown", "bs4", "Pygments", "click"]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "Markdown", "bs4", "Pygments"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle"]
 isort = ["isort"]
 mypy = ["mypy"]
@@ -2116,4 +2116,4 @@ vulture = ["vulture"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "138834d89beb109b1e2aeca7163f269fc8fe49b0cd208882a48db7034358b05b"
+content-hash = "1cafa01f1fd491ead59328f55f17d740136922942190a87e41679ba2d3e6b9d8"
