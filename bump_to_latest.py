@@ -15,7 +15,8 @@ config_file_path.close()
 config = deepcopy(original_config)
 deps = config["tool"]["poetry"]["dependencies"]
 
-error = False
+LOWEST_SUPPORTED_PYTHON_VERSION = deps["python"].strip("^")
+
 for key, value in deps.items():
     if key == "python":
         continue
@@ -42,8 +43,4 @@ for key, value in deps.items():
     with subprocess.Popen(["poetry", "add", f"{key}@{latest_version}", "--optional"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
         for line in process.stdout:
             line_txt = line.decode('utf8')
-            if "SolverProblemError" in line_txt:
-                error = True
             print(line_txt)
-
-

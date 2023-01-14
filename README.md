@@ -38,7 +38,7 @@ Currently, the following, somewhat hacky, process works well:
 
 3. Run `python ./bump_to_latest.py`
 
-4. Make all remaining versions strict again in `pyproject.toml` and run `poetry update`.
+4. Check non-strict versions in `pyproject.toml` and make them strict by manually running the `poetry add PACKAGE@==VERSION --optional`.
 
 ## Name
 
