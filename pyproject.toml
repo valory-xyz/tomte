@@ -36,8 +36,11 @@ pytest-rerunfailures = {version = "==11.0", optional = true}
 bs4 = {version = "==0.0.1", optional = true}
 Pygments = {version = "==2.14.0", optional = true}
 
+# don't change unless changed on open-aea
+click = {version = "==8.0.2", optional = true}
+
 [tool.poetry.extras]
-black = ["black"]
+black = ["black", "click"]
 bandit = ["bandit"]
 isort = ["isort"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle"]
@@ -46,7 +49,7 @@ safety = ["safety"]
 darglint = ["darglint"]
 vulture = ["vulture"]
 pylint = ["pylint"]
-docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "Markdown", "bs4", "Pygments", "importlib-metadata"]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-macros-plugin", "pydoc-markdown", "pydocstyle", "pymdown-extensions", "markdown-include", "Markdown", "bs4", "Pygments", "click"]
 tests = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-randomly", "pytest-rerunfailures"]
 tox = ["tox"]
 
