@@ -22,6 +22,24 @@ Extremely (!) opinionated by design!
 
 To install, for instance `black`, simply specify `tomte[black]==VERSION`, where `VERSION` is the latest version, and then use `black` CLI as required.
 
+## Development:
+
+### Install deps:
+
+Install poetry.
+
+### Upgrading versions
+
+Currently, the following, somewhat hacky, process works well:
+
+1. Run `sed -i '' "s/==/>=/g" pyproject.toml` to remove strict version requirements.
+
+2. `poetry shell` and `pip install toml requests`
+
+3. Run `python ./bump_to_latest.py`
+
+4. Make all remaining versions strict again in `pyproject.toml` and run `poetry update`.
+
 ## Name
 
 ["The Swedish hustomte (house elf/gnome) is a quiet little guy, dressed mostly in gray and red, living at your house or farmsted helping out by taking care of things around the house and keep everyone safe."](https://funflector.com/blog/the-quiet-swedish-tomte/)
