@@ -19,6 +19,7 @@ Extremely (!) opinionated by design!
 - docs (various mkdocs libraries)
 - tests (various pytest libraries)
 - tox
+- liccheck
 
 To install, for instance `black`, simply specify `tomte[black]==VERSION`, where `VERSION` is the latest version, and then use `black` CLI as required.
 
