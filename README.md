@@ -51,4 +51,4 @@ Currently, the following, somewhat hacky, process works well:
 
 ## Release guide:
 
-Finish edits, bump versions in `pyproject.toml` and `tomte/__init__.py`, then `poetry lock`, then `rm -rf dist`, then `poetry publish --build`.
+Finish edits, bump versions in `pyproject.toml` and `tomte/__init__.py`, then `poetry lock`, then `rm -rf dist`, then `poetry publish --build --username=<username> --password=<password>`.
