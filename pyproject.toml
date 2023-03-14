@@ -61,3 +61,14 @@ pytest = "^7.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "tomte"
+authors = [
+    {name = "David Minarsch", email = "david.minarsch@googlemail.com"},
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.7"
+description = "A library that wraps many useful tools (linters, analysers, etc) to keep Python code clean, secure, well-documented and optimised."
+version = "0.2.3"
