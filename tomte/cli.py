@@ -84,7 +84,7 @@ def check_doc_links(
 @click.option("--package-path", type=str, required=True)
 def check_readme(package_path: str) -> None:
     """Check readme file."""
-    check_readme_main(author)
+    check_readme_main(package_path)
 
 
 @click.command()

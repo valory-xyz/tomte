@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tomte"
-version = "0.2.9"
+version = "0.2.10"
 description = "A library that wraps many useful tools (linters, analysers, etc) to keep Python code clean, secure, well-documented and optimised."
 authors = ["David Minarsch <david.minarsch@googlemail.com>"]
 license = "MIT"
