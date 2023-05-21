@@ -54,8 +54,8 @@ def check_code() -> None:
 
 
 @click.command()
-def check_safety() -> None:
-    """Run safety checks in parallel: safety and bandit."""
+def check_security() -> None:
+    """Run security checks in parallel: safety and bandit."""
     sys.argv = ["tox", "-p", "-e", "safety", "-e", "bandit"]
     tox_cmdline()
 
@@ -101,7 +101,7 @@ cli.add_command(check_code)
 cli.add_command(check_copyright)
 cli.add_command(check_doc_links)
 cli.add_command(check_readme)
-cli.add_command(check_safety)
+cli.add_command(check_security)
 
 
 if __name__ == "__main__":
