@@ -25,10 +25,10 @@ def format_code() -> None:
 
 
 @click.command()
-def format_copyright() -> None:
+@click.option("--author", type=str, required=True)
+def format_copyright(author) -> None:
     """Run copyright formatter."""
-    sys.argv = ["tox", "-e", "fix-copyright"]
-    tox_cmdline()
+    check_copyright_main(author, fix=True)
 
 
 @click.command()

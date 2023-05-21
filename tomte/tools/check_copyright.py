@@ -29,7 +29,6 @@ In particular:
 It is assumed the script is run from the repository root.
 """
 
-import argparse
 import itertools
 import re
 import shutil
@@ -291,18 +290,8 @@ def run_check(files: Iterator[Path]) -> None:
         sys.exit(0)
 
 
-def get_args() -> argparse.Namespace:
-    """Get CLI arguments."""
-
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("--check", action="store_true")
-    return argparser.parse_args()
-
-
-def main(author: str) -> None:
+def main(author: str, fix: bool = False) -> None:
     """Main function."""
-
-    args = get_args()
 
     exclude_files = {Path("scripts", "whitelist.py")}
     python_files = filter(
@@ -333,7 +322,7 @@ def main(author: str) -> None:
         )
 
     python_files_filtered = filter(_file_filter, python_files)
-    if args.check:
-        run_check(python_files_filtered)
-    else:
+    if fix:
         update_headers(python_files_filtered)
+    else:
+        run_check(python_files_filtered)

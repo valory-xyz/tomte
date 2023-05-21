@@ -31,9 +31,8 @@ from typing import Any, Dict, List, Optional
 import requests
 import urllib3  # type: ignore
 from requests.adapters import HTTPAdapter  # type: ignore
-from requests.packages.urllib3.util.retry import (
-    Retry,
-)  # type: ignore # pylint: disable=import-error
+from requests.packages.urllib3.util.retry import \
+    Retry  # type: ignore # pylint: disable=import-error
 
 # Disable insecure request warning (expired SSL certificates)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
