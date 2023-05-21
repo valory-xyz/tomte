@@ -24,15 +24,15 @@ from pathlib import Path
 from typing import Optional
 
 
-def main(output: Optional[str]) -> None:
+def main(output_path: Optional[str]) -> None:
     pip_freeze_call = subprocess.Popen(  # nosec  # pylint: disable=consider-using-with
         ["pip", "freeze"], stdout=subprocess.PIPE
     )
     (stdout, stderr) = pip_freeze_call.communicate()
     requirements = stdout.decode("utf-8")
 
-    if output is None:
+    if output_path is None:
         print(requirements)
     else:
-        path = Path(output)
+        path = Path(output_path)
         path.write_text(requirements)
