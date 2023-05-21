@@ -1,9 +1,9 @@
-import requests
 import subprocess
-import toml
-
 from copy import deepcopy
 from pathlib import Path
+
+import requests
+import toml
 
 LOWEST_SUPPORTED_PYTHON_VERSION = "3.7"
 
@@ -28,9 +28,23 @@ for key, value in deps.items():
     # highest version for LOWEST_SUPPORTED_PYTHON_VERSION
     latest_version = current_version
     if key != "tox":
-        with subprocess.Popen(["pip", "install", f"{key}", "--dry-run", "--python-version", f"{LOWEST_SUPPORTED_PYTHON_VERSION}", "--no-deps", "--target", "foo"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+        with subprocess.Popen(
+            [
+                "pip",
+                "install",
+                f"{key}",
+                "--dry-run",
+                "--python-version",
+                f"{LOWEST_SUPPORTED_PYTHON_VERSION}",
+                "--no-deps",
+                "--target",
+                "foo",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        ) as process:
             for line in process.stdout:
-                line_txt = line.decode('utf8')
+                line_txt = line.decode("utf8")
                 target = f"Would install {key}-"
                 if target in line_txt:
                     latest_version = line_txt.strip(target).strip("\n")
@@ -40,7 +54,11 @@ for key, value in deps.items():
         latest_version = f"<4"
 
     print(f"Updating {key} to {latest_version}, from {current_version}")
-    with subprocess.Popen(["poetry", "add", f"{key}@{latest_version}", "--optional"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+    with subprocess.Popen(
+        ["poetry", "add", f"{key}@{latest_version}", "--optional"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    ) as process:
         for line in process.stdout:
-            line_txt = line.decode('utf8')
+            line_txt = line.decode("utf8")
             print(line_txt)
