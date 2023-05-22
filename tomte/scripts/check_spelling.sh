@@ -3,9 +3,9 @@
 #
 #    https://www.npmjs.com/package/markdown-spellcheck
 #
-# Run this script from the root directory.
+# This script is intended to be run through tomte on the root folder.
 # Usage:
-#   ./scripts/spell-check.sh
+#   tomte check-spelling
 #
 
 MDSPELL_PATH="$(which mdspell)"
