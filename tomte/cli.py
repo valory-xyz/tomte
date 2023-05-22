@@ -2,6 +2,9 @@ import sys
 from typing import List, Optional
 
 import click
+import subprocess
+from pathlib import Path
+
 from tox import cmdline as tox_cmdline
 
 from tomte import __version__
@@ -94,9 +97,11 @@ def freeze_dependencies(output_path: Optional[str]) -> None:
     freeze_dependencies_main(output_path=output_path)
 
 @click.command()
-def check_spelling(author: str) -> None:
+def check_spelling() -> None:
     """Check spelling on all the doc .md files."""
-    subprocess.call(['sh', './scripts/check_spelling.sh'])
+    script_path = Path(__file__).resolve()
+    target_script = Path(script_path.parent, 'scripts', 'check_spelling.sh')
+    subprocess.call(['sh', target_script])
 
 cli.add_command(freeze_dependencies)
 cli.add_command(format_copyright)
