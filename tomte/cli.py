@@ -93,6 +93,10 @@ def freeze_dependencies(output_path: Optional[str]) -> None:
     """Freeze dependencies."""
     freeze_dependencies_main(output_path=output_path)
 
+@click.command()
+def check_spelling(author: str) -> None:
+    """Check spelling on all the doc .md files."""
+    subprocess.call(['sh', './scripts/check_spelling.sh'])
 
 cli.add_command(freeze_dependencies)
 cli.add_command(format_copyright)
@@ -102,6 +106,7 @@ cli.add_command(check_copyright)
 cli.add_command(check_doc_links)
 cli.add_command(check_readme)
 cli.add_command(check_security)
+cli.add_command(check_spelling)
 
 
 if __name__ == "__main__":
