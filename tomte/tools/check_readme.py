@@ -42,11 +42,3 @@ def main(service_package: str) -> None:
                 f"The service package hash was not found on the readme."
             )
             sys.exit(not_found)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        script_name = Path(sys.argv[0]).name
-        print(f"Usage: python {script_name} service_package")
-        sys.exit(1)
-    main(sys.argv[1])
