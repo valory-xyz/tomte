@@ -29,9 +29,10 @@ def format_code() -> None:
 
 @click.command()
 @click.option("--author", type=str, required=True)
-def format_copyright(author) -> None:
+@click.option("--exclude-part", '-e', multiple=True)
+def format_copyright(author: str, exclude_part: List[str]) -> None:
     """Run copyright formatter."""
-    check_copyright_main(author, fix=True)
+    check_copyright_main(author, set(exclude_part), fix=True)
 
 
 @click.command()
@@ -65,9 +66,10 @@ def check_security() -> None:
 
 @click.command()
 @click.option("--author", type=str, required=True)
-def check_copyright(author: str) -> None:
+@click.option("--exclude-part", '-e', multiple=True)
+def check_copyright(author: str, exclude_part: List[str]) -> None:
     """Check copyright on all the files in a project."""
-    check_copyright_main(author)
+    check_copyright_main(author, set(exclude_part))
 
 
 @click.command()

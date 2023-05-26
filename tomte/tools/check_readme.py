@@ -39,10 +39,6 @@ def main(service_package: str) -> None:
         if wanted_hash is None or wanted_hash not in readme:
             # we were not able to find the wanted hash
             not_found = (
-                "The ElCollectooorr service package hash was not found on the readme."
+                f"The service package hash was not found on the readme."
             )
             sys.exit(not_found)
-
-
-if __name__ == "__main__":
-    main()

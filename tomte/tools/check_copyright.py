@@ -36,11 +36,12 @@ import subprocess  # nosec
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple, cast
+from typing import Dict, Iterator, Optional, Tuple, cast, Set
 
+BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
-START_YEARS = (2021, 2022, 2023)
+START_YEARS = tuple(range(BIRTH_YEAR, datetime.today().year + 1))
 SHEBANG = "#!/usr/bin/env python3"
 HEADER_REGEX = re.compile(
     r"""(#!/usr/bin/env python3
@@ -186,14 +187,22 @@ def _validate_years(
 
 
 def fix_header(check_info: Dict) -> bool:
-    """Fix currupt headers."""
+    """Fix corrupt headers."""
 
     path = cast(Path, check_info.get("path"))
     content = path.read_text()
     copyright_string = ""
     is_update_needed = False
+    missing_header = False
 
-    if check_info["error_code"] in (
+    if "error_code" not in check_info:
+        copyright_string = "#   Copyright {start_year}-{end_year} Valory AG".format(
+            start_year=BIRTH_YEAR,
+            end_year=get_modification_date(path).year,
+        )
+        missing_header = True
+
+    elif check_info["error_code"] in (
         ErrorTypes.END_YEAR_WRONG,
         ErrorTypes.END_YEAR_MISSING,
     ):
@@ -209,6 +218,15 @@ def fix_header(check_info: Dict) -> bool:
             end_year=check_info["last_modification"].year,
         )
         is_update_needed = True
+
+    if missing_header:
+        new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
+        new_header = SHEBANG + "\n" + new_header
+        if content != "":
+            new_header += "\n\n"
+        updated_content = new_header + content
+        path.write_text(updated_content)
+        return True
 
     if is_update_needed:
         new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
@@ -290,35 +308,38 @@ def run_check(files: Iterator[Path]) -> None:
         sys.exit(0)
 
 
-def main(author: str, fix: bool = False) -> None:
+def main(author: str, exclude_parts: Set[str], fix: bool = False) -> None:
     """Main function."""
 
     exclude_files = {Path("scripts", "whitelist.py")}
     python_files = filter(
         lambda x: x not in exclude_files,
         itertools.chain(
-            Path("packages", author).glob("**/*.py"),
-            Path("tests").glob("**/*.py"),
-            Path("scripts").glob("**/*.py"),
+            *(
+                Path(*path).glob("**/*.py")
+                for path in (
+                    ("packages", author),
+                    ("tests",),
+                    ("scripts",),
+                )
+            )
         ),
     )
 
     def _file_filter(file: Path) -> bool:
         """Filter for files."""
         file_str = str(file)
+        unwanted_parts = {
+            "t_protocol",
+            "t_protocol_no_ct",
+            "build",
+        }.union(exclude_parts)
 
         # protocols are generated using generate_all_protocols.py
         return (
             not file_str.endswith("_pb2.py")
             and not file_str.endswith("_pb2_grpc.py")
-            and (
-                (
-                    "protocols" not in file.parts
-                    and "t_protocol" not in file.parts
-                    and "t_protocol_no_ct" not in file.parts
-                    and "build" not in file.parts
-                )
-            )
+            and not any(part in file.parts for part in unwanted_parts)
         )
 
     python_files_filtered = filter(_file_filter, python_files)
