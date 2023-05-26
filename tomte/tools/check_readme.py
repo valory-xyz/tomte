@@ -39,10 +39,14 @@ def main(service_package: str) -> None:
         if wanted_hash is None or wanted_hash not in readme:
             # we were not able to find the wanted hash
             not_found = (
-                "The ElCollectooorr service package hash was not found on the readme."
+                f"The '{service_package}' service package hash was not found on the readme."
             )
             sys.exit(not_found)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 2:
+        script_name = Path(sys.argv[0]).name
+        print(f"Usage: python {script_name} service_package")
+        sys.exit(1)
+    main(sys.argv[1])
