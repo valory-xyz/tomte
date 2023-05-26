@@ -36,7 +36,7 @@ import subprocess  # nosec
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple, cast
+from typing import Dict, Iterator, Optional, Tuple, cast, Set
 
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
@@ -290,7 +290,7 @@ def run_check(files: Iterator[Path]) -> None:
         sys.exit(0)
 
 
-def main(author: str, fix: bool = False) -> None:
+def main(author: str, exclude_parts: Set[str], fix: bool = False) -> None:
     """Main function."""
 
     exclude_files = {Path("scripts", "whitelist.py")}
@@ -306,19 +306,17 @@ def main(author: str, fix: bool = False) -> None:
     def _file_filter(file: Path) -> bool:
         """Filter for files."""
         file_str = str(file)
+        unwanted_parts = {
+            "t_protocol",
+            "t_protocol_no_ct",
+            "build",
+        }.union(exclude_parts)
 
         # protocols are generated using generate_all_protocols.py
         return (
             not file_str.endswith("_pb2.py")
             and not file_str.endswith("_pb2_grpc.py")
-            and (
-                (
-                    "protocols" not in file.parts
-                    and "t_protocol" not in file.parts
-                    and "t_protocol_no_ct" not in file.parts
-                    and "build" not in file.parts
-                )
-            )
+            and not any(part in file.parts for part in unwanted_parts)
         )
 
     python_files_filtered = filter(_file_filter, python_files)
