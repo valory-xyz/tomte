@@ -38,9 +38,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Tuple, cast, Set
 
+BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
-START_YEARS = tuple(range(2021, datetime.today().year + 1))
+START_YEARS = tuple(range(BIRTH_YEAR, datetime.today().year + 1))
 SHEBANG = "#!/usr/bin/env python3"
 HEADER_REGEX = re.compile(
     r"""(#!/usr/bin/env python3
@@ -186,14 +187,22 @@ def _validate_years(
 
 
 def fix_header(check_info: Dict) -> bool:
-    """Fix currupt headers."""
+    """Fix corrupt headers."""
 
     path = cast(Path, check_info.get("path"))
     content = path.read_text()
     copyright_string = ""
     is_update_needed = False
+    missing_header = False
 
-    if check_info["error_code"] in (
+    if "error_code" not in check_info:
+        copyright_string = "#   Copyright {start_year}-{end_year} Valory AG".format(
+            start_year=BIRTH_YEAR,
+            end_year=get_modification_date(path).year,
+        )
+        missing_header = True
+
+    elif check_info["error_code"] in (
         ErrorTypes.END_YEAR_WRONG,
         ErrorTypes.END_YEAR_MISSING,
     ):
@@ -209,6 +218,15 @@ def fix_header(check_info: Dict) -> bool:
             end_year=check_info["last_modification"].year,
         )
         is_update_needed = True
+
+    if missing_header:
+        new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
+        new_header = SHEBANG + "\n" + new_header
+        if content != "":
+            new_header += "\n\n"
+        updated_content = new_header + content
+        path.write_text(updated_content)
+        return True
 
     if is_update_needed:
         new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
