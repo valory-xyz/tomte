@@ -40,7 +40,7 @@ from typing import Dict, Iterator, Optional, Tuple, cast, Set
 
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
-START_YEARS = (2021, 2022, 2023)
+START_YEARS = tuple(range(2021, datetime.today().year + 1))
 SHEBANG = "#!/usr/bin/env python3"
 HEADER_REGEX = re.compile(
     r"""(#!/usr/bin/env python3
