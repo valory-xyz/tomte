@@ -297,9 +297,14 @@ def main(author: str, exclude_parts: Set[str], fix: bool = False) -> None:
     python_files = filter(
         lambda x: x not in exclude_files,
         itertools.chain(
-            Path("packages", author).glob("**/*.py"),
-            Path("tests").glob("**/*.py"),
-            Path("scripts").glob("**/*.py"),
+            *(
+                Path(*path).glob("**/*.py")
+                for path in (
+                    ("packages", author),
+                    ("tests",),
+                    ("scripts",),
+                )
+            )
         ),
     )
 
