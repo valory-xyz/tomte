@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
 #
-#   Copyright 2021-2022 Valory AG
+#   Copyright 2021-2023 Valory AG
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -17,3 +17,22 @@
 #   limitations under the License.
 #
 # ------------------------------------------------------------------------------
+
+"""This CLI tool freezes the dependencies."""
+import subprocess  # nosec
+from pathlib import Path
+from typing import Optional
+
+
+def main(output_path: Optional[str]) -> None:
+    pip_freeze_call = subprocess.Popen(  # nosec  # pylint: disable=consider-using-with
+        ["pip", "freeze"], stdout=subprocess.PIPE
+    )
+    (stdout, stderr) = pip_freeze_call.communicate()
+    requirements = stdout.decode("utf-8")
+
+    if output_path is None:
+        print(requirements)
+    else:
+        path = Path(output_path)
+        path.write_text(requirements)
