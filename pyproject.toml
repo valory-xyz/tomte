@@ -22,7 +22,7 @@ pylint = {version = "==2.13.9", optional = true}
 safety = {version = "==2.3.5", optional = true}
 vulture = {version = "==2.7", optional = true}
 mkdocs = {version = "==1.4.2", optional = true}
-mkdocs-material = {version = "==9.1.8", optional = true}
+mkdocs-material = {version = "==9.1.15", optional = true}
 mkdocs-macros-plugin = {version = "==0.7.0", optional = true}
 mkdocs-redirects = {version = "==1.2.0", optional = true}
 Markdown = {version = "==3.3.7", optional = true}
