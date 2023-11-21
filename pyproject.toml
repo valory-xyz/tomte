@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tomte"
-version = "0.2.13"
+version = "0.2.14"
 description = "A library that wraps many useful tools (linters, analysers, etc) to keep Python code clean, secure, well-documented and optimised."
 authors = ["David Minarsch <david.minarsch@googlemail.com>"]
 license = "MIT"
@@ -40,7 +40,7 @@ liccheck = {version = "==0.8.3", optional = true}
 
 # don't change unless changed on open-aea
 click = {version = "==8.0.2", optional = true}
-requests = {version = "==2.28.2", optional = true}
+requests = {version = "==2.28.1", optional = true}
 
 [tool.poetry.extras]
 black = ["black", "click"]
