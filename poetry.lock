@@ -1027,6 +1027,25 @@ files = [
 ]
 
 [[package]]
+name = "mkdocs-redirects"
+version = "1.2.0"
+description = "A MkDocs plugin for dynamic page redirects to prevent broken links."
+category = "main"
+optional = true
+python-versions = ">=3.6"
+files = [
+    {file = "mkdocs-redirects-1.2.0.tar.gz", hash = "sha256:ddd38267d49fdfa19fb2f25b4aed2fb53f0496c818bf3018009c8eaf6676a327"},
+]
+
+[package.dependencies]
+mkdocs = ">=1.1.1"
+
+[package.extras]
+dev = ["autoflake", "black", "isort", "pytest", "twine (>=1.13.0)"]
+release = ["twine (>=1.13.0)"]
+test = ["autoflake", "black", "isort", "pytest"]
+
+[[package]]
 name = "mypy"
 version = "0.991"
 description = "Optional static typing for Python"
@@ -2173,7 +2192,7 @@ bandit = ["bandit"]
 black = ["black", "click"]
 cli = ["click", "requests", "tox"]
 darglint = ["darglint"]
-docs = ["Markdown", "Pygments", "bs4", "click", "markdown-include", "mkdocs", "mkdocs-macros-plugin", "mkdocs-material", "mkdocs-material-extensions", "pydoc-markdown", "pydocstyle", "pymdown-extensions"]
+docs = ["Markdown", "Pygments", "bs4", "click", "markdown-include", "mkdocs", "mkdocs-macros-plugin", "mkdocs-material", "mkdocs-material-extensions", "mkdocs-redirects", "pydoc-markdown", "pydocstyle", "pymdown-extensions"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle"]
 isort = ["isort"]
 liccheck = ["liccheck"]
@@ -2187,4 +2206,4 @@ vulture = ["vulture"]
 [metadata]
 lock-version = "2.0"
 python-versions = "<4,>=3.8"
-content-hash = "1c6e23c5b35dbf91445398e418000c5c7b91f8348334b12fe1ed005a6072d000"
+content-hash = "6cc647617fd482c485a550944ba7dcdeaf9199f1bcfe9d26d7fb6a485438c135"
