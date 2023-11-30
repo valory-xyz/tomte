@@ -5,7 +5,6 @@ description = "A library that wraps many useful tools (linters, analysers, etc) 
 authors = ["David Minarsch <david.minarsch@googlemail.com>"]
 license = "MIT"
 readme = "README.md"
-long_description_content_type="text/markdown"
 
 [tool.poetry.dependencies]
 python = "<4,>=3.8"
