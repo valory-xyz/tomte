@@ -591,9 +591,10 @@ pipenv = ["pipenv (<=2022.12.19)"]
 name = "eradicate"
 version = "2.3.0"
 description = "Removes commented-out code."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
+markers = "extra == \"flake8\""
 files = [
     {file = "eradicate-2.3.0-py3-none-any.whl", hash = "sha256:2b29b3dd27171f209e4ddd8204b70c02f0682ae95eecb353f10e8d72b149c63e"},
     {file = "eradicate-2.3.0.tar.gz", hash = "sha256:06df115be3b87d0fc1c483db22a2ebb12bcf40585722810d809cc770f5031c37"},
@@ -637,9 +638,10 @@ typing = ["typing-extensions (>=4.8)"]
 name = "flake8"
 version = "7.1.2"
 description = "the modular source code checker: pep8 pyflakes and co"
-optional = false
+optional = true
 python-versions = ">=3.8.1"
 groups = ["main"]
+markers = "extra == \"flake8\""
 files = [
     {file = "flake8-7.1.2-py2.py3-none-any.whl", hash = "sha256:1cbc62e65536f65e6d754dfe6f1bada7f5cf392d6f5db3c2b85892466c3e7c1a"},
     {file = "flake8-7.1.2.tar.gz", hash = "sha256:c586ffd0b41540951ae41af572e6790dbd49fc12b3aa2541685d253d9bd504bd"},
@@ -691,9 +693,10 @@ pydocstyle = ">=2.1"
 name = "flake8-eradicate"
 version = "1.5.0"
 description = "Flake8 plugin to find commented out code"
-optional = false
+optional = true
 python-versions = ">=3.8,<4.0"
 groups = ["main"]
+markers = "extra == \"flake8\""
 files = [
     {file = "flake8_eradicate-1.5.0-py3-none-any.whl", hash = "sha256:18acc922ad7de623f5247c7d5595da068525ec5437dd53b22ec2259b96ce9d22"},
     {file = "flake8_eradicate-1.5.0.tar.gz", hash = "sha256:aee636cb9ecb5594a7cd92d67ad73eb69909e5cc7bd81710cf9d00970f3983a6"},
@@ -1063,9 +1066,10 @@ tests = ["pytest", "pytz", "simplejson"]
 name = "mccabe"
 version = "0.7.0"
 description = "McCabe checker, plugin for flake8"
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
+markers = "extra == \"flake8\" or extra == \"pylint\""
 files = [
     {file = "mccabe-0.7.0-py2.py3-none-any.whl", hash = "sha256:6c2d30ab6be0e4a46919781807b4f0d834ebdd6c6e3dca0bda5a15f863427b6e"},
     {file = "mccabe-0.7.0.tar.gz", hash = "sha256:348e0240c33b60bbdf4e523192ef919f28cb2c3d7d5c7794f74009290f236325"},
@@ -1432,9 +1436,10 @@ files = [
 name = "pycodestyle"
 version = "2.12.1"
 description = "Python style guide checker"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"flake8\""
 files = [
     {file = "pycodestyle-2.12.1-py2.py3-none-any.whl", hash = "sha256:46f0fb92069a7c28ab7bb558f05bfc0110dac69a0cd23c61ea0040283a9d78b3"},
     {file = "pycodestyle-2.12.1.tar.gz", hash = "sha256:6838eae08bbce4f6accd5d5572075c63626a15ee3e6f842df996bf62f6d73521"},
@@ -1492,9 +1497,10 @@ toml = ["tomli (>=1.2.3)"]
 name = "pyflakes"
 version = "3.2.0"
 description = "passive checker of Python programs"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"flake8\""
 files = [
     {file = "pyflakes-3.2.0-py2.py3-none-any.whl", hash = "sha256:84b5be138a2dfbb40689ca07e2152deb896a65c3a3e24c251c5c62489568074a"},
     {file = "pyflakes-3.2.0.tar.gz", hash = "sha256:1c61603ff154621fb2a9172037d84dca3500def8c8b630657d1701f026f8af3f"},
@@ -2438,4 +2444,4 @@ vulture = ["vulture"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<4,>=3.8.1"
-content-hash = "d9d67018ffe7e95a3584b09f6477568090b9ab6308c07203929d116d17a3b044"
+content-hash = "565a90a2286abb27866def2974ccbaa8487407b886fc49ebb9c6d7b59e3caed3"
