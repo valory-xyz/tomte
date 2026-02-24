@@ -31,15 +31,23 @@ Install poetry.
 
 ### Upgrading versions
 
-Currently, the following, somewhat hacky, process works well:
+Use the script directly (fully automated, no manual pin editing):
 
-1. Run `sed -i '' "s/==/>=/g" pyproject.toml` to remove strict version requirements.
+1. Run `poetry run python bump_to_latest.py`
 
-2. `poetry shell` and `pip install toml requests`
+This command automatically:
 
-3. Run `python ./bump_to_latest.py`
+- Resolves latest compatible versions for `<4,>=3.10` support.
+- Applies strict `==` pins with Poetry.
+- Falls back to the highest resolver-compatible version when the absolute latest conflicts.
+- Bumps package version (patch by default) in `pyproject.toml`, `tomte/__init__.py`, and `tests/test_tomte.py`.
+- Regenerates `poetry.lock`.
 
-4. Check non-strict versions in `pyproject.toml` and make them strict by manually running the `poetry add PACKAGE@==VERSION --optional`. Finaly, run `poetry update`
+Useful flags:
+
+- `--dry-run`
+- `--bump-version none|patch|minor|major`
+- `--no-lock`
 
 ## Name
 
@@ -51,4 +59,4 @@ Currently, the following, somewhat hacky, process works well:
 
 ## Release guide:
 
-Finish edits, bump versions in `pyproject.toml` and `tomte/__init__.py`, then `poetry lock`, then `rm -rf dist`, then `poetry publish --build --username=<username> --password=<password>`.
+Finish edits and run `poetry run python bump_to_latest.py`, then `poetry run pytest -q`, then `poetry build`, then `rm -rf dist`, then `poetry publish --build --username=<username> --password=<password>`.
