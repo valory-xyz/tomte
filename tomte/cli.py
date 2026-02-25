@@ -5,7 +5,7 @@ import click
 import subprocess
 from pathlib import Path
 
-from tox import cmdline as tox_cmdline
+from tox.run import run as tox_run
 
 from tomte import __version__
 from tomte.tools.check_copyright import main as check_copyright_main
@@ -24,7 +24,7 @@ def cli() -> None:
 def format_code() -> None:
     """Run code formatters sequentially: isort and black."""
     sys.argv = ["tox", "-e", "isort", "-e", "black"]
-    tox_cmdline()
+    tox_run()
 
 
 @click.command()
@@ -54,14 +54,14 @@ def check_code() -> None:
         "-e",
         "darglint",
     ]
-    tox_cmdline()
+    tox_run()
 
 
 @click.command()
 def check_security() -> None:
     """Run security checks in parallel: safety and bandit."""
     sys.argv = ["tox", "-p", "-e", "safety", "-e", "bandit"]
-    tox_cmdline()
+    tox_run()
 
 
 @click.command()
