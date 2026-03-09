@@ -104,11 +104,13 @@ def check_file(
 
         # Check for broken links: 200 and 403 codes are admitted
         try:
+            # Use HEAD requests to avoid rate-limiting on content-heavy pages (e.g. GitHub blob URLs)
             # Do not verify requests. Expired SSL certificates would make those links fail
-            status_code = session.get(
+            status_code = session.head(
                 url,
                 timeout=CUSTOM_TIMEOUTS.get(url, DEFAULT_REQUEST_TIMEOUT),
                 verify=False,
+                allow_redirects=True,
             ).status_code
             if status_code not in [200, 403]:
                 broken_links.append({"url": url, "status_code": status_code})
