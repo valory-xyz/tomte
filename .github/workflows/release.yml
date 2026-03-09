@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.10"]
+        python-version: ["3.14"]
     steps:
       - uses: actions/checkout@master
       - uses: actions/setup-python@v3
@@ -24,7 +24,7 @@ jobs:
           pip install poetry twine 
       - name: Build
         run: |
-          poetry install
+          poetry install --with dev
           poetry build
       - name: Publish open-autonomy Framework to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
