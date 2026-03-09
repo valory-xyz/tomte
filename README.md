@@ -28,6 +28,9 @@ To install, for instance `black`, simply specify `tomte[black]==VERSION`, where 
 ### Install deps:
 
 Install poetry.
+Install development dependencies before running maintenance scripts:
+
+`poetry install --with dev`
 
 ### Upgrading versions
 
@@ -59,4 +62,4 @@ Useful flags:
 
 ## Release guide:
 
-Finish edits and run `poetry run python bump_to_latest.py`, then `poetry run pytest -q`, then `poetry build`, then `rm -rf dist`, then `poetry publish --build --username=<username> --password=<password>`.
+Finish edits and ensure dev dependencies are installed (`poetry install --with dev`), then run `poetry run python bump_to_latest.py`, then `poetry run pytest -q`, then `poetry build`, then `rm -rf dist`, then `poetry publish --build --username=<username> --password=<password>`.
