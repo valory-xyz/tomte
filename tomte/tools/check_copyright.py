@@ -43,6 +43,8 @@ CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
 START_YEARS = tuple(range(BIRTH_YEAR, datetime.today().year + 1))
 SHEBANG = "#!/usr/bin/env python3"
+
+# Default regex for a single-author header (Valory AG)
 HEADER_REGEX = re.compile(
     r"""(#!/usr/bin/env python3
 )?# -\*- coding: utf-8 -\*-
@@ -65,6 +67,49 @@ HEADER_REGEX = re.compile(
 # ------------------------------------------------------------------------------
 """,
     re.MULTILINE,
+)
+
+
+def _build_header_regex(authors: Tuple[str, ...]) -> re.Pattern:
+    """Build a header regex that matches any of the given authors.
+
+    Supports single or multiple copyright lines in the header.
+
+    :param authors: tuple of author names.
+    :return: compiled regex pattern.
+    """
+    if len(authors) == 1:
+        copyright_pattern = r"#   Copyright ((20\d\d)(-20\d\d)?) " + re.escape(authors[0])
+    else:
+        # Match one or more copyright lines for any of the given authors
+        single_line = r"#   Copyright (?:(?:20\d\d)(?:-20\d\d)?) (?:" + "|".join(re.escape(a) for a in authors) + r")"
+        copyright_pattern = r"(" + single_line + r"\n)+" + r"(?=#\n)"
+    return re.compile(
+        r"(#!/usr/bin/env python3\n)?# -\*- coding: utf-8 -\*-\n"
+        r"# ------------------------------------------------------------------------------\n"
+        r"#\n"
+        + copyright_pattern + r"\n?"
+        r"#\n"
+        r"#   Licensed under the Apache License, Version 2\.0 \(the \"License\"\);\n"
+        r"#   you may not use this file except in compliance with the License\.\n"
+        r"#   You may obtain a copy of the License at\n"
+        r"#\n"
+        r"#       http://www\.apache\.org/licenses/LICENSE-2\.0\n"
+        r"#\n"
+        r"#   Unless required by applicable law or agreed to in writing, software\n"
+        r"#   distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+        r"#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied\.\n"
+        r"#   See the License for the specific language governing permissions and\n"
+        r"#   limitations under the License\.\n"
+        r"#\n"
+        r"# ------------------------------------------------------------------------------\n",
+        re.MULTILINE,
+    )
+
+
+# Regex to extract year data from any copyright line
+COPYRIGHT_LINE_REGEX = re.compile(
+    r"#   Copyright ((20\d\d)(-20\d\d)?) (.+)"
 )
 HEADER_TEMPLATE = """# -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
@@ -238,14 +283,21 @@ def fix_header(check_info: Dict) -> bool:
     return is_update_needed
 
 
-def update_headers(files: Iterator[Path]) -> None:
-    """Update headers."""
+def update_headers(
+    files: Iterator[Path],
+    authors: Optional[Tuple[str, ...]] = None,
+) -> None:
+    """Update headers.
+
+    :param files: iterator of file paths to update.
+    :param authors: tuple of allowed author names, or None for single-author default.
+    """
 
     needs_update = []
 
     for path in files:
         print("Checking {}".format(path))
-        check_data = check_copyright(path)
+        check_data = check_copyright(path, authors=authors)
         if not check_data["check"]:
             check_data["path"] = path
             needs_update.append(check_data)
@@ -265,7 +317,7 @@ def update_headers(files: Iterator[Path]) -> None:
         print("No update needed.")
 
 
-def check_copyright(file: Path) -> Dict:
+def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Dict:
     """
     Given a file, check if the header stuff is in place.
 
@@ -273,22 +325,58 @@ def check_copyright(file: Path) -> Dict:
     optionally prefixed by the shebang. Return False otherwise.
 
     :param file: the file to check.
+    :param authors: tuple of allowed author names. If None, uses default single-author regex.
     :return: True if the file is compliant with the checks, False otherwise.
     """
     content = file.read_text()
-    match = HEADER_REGEX.match(content)
-    if match is not None:
-        return _validate_years(file, START_YEARS, *get_year_data(match))  # type: ignore
+
+    if authors is not None and len(authors) > 1:
+        # Multi-author: validate that the header structure is correct,
+        # then check years on each copyright line individually
+        header_regex = _build_header_regex(authors)
+        match = header_regex.match(content)
+        if match is None:
+            return {"check": False, "message": "Invalid copyright header."}
+
+        # Find all copyright lines; only validate the primary author's years.
+        # Secondary (historical) authors are accepted as-is.
+        primary_author = authors[0]
+        for line_match in COPYRIGHT_LINE_REGEX.finditer(content[:500]):
+            line_author = line_match.group(4).strip()
+            year_string = line_match.group(1)
+            if "-" in year_string:
+                start_year, end_year = map(int, year_string.split("-"))
+            else:
+                start_year, end_year = int(year_string), None
+
+            if line_author == primary_author:
+                result = _validate_years(file, START_YEARS, start_year, end_year)
+                if not result["check"]:
+                    return result
+
+        return {"check": True, "message": "OK", "start_year": None, "end_year": None,
+                "last_modification": get_modification_date(file), "error_code": ErrorTypes.NO_ERROR}
+    else:
+        match = HEADER_REGEX.match(content)
+        if match is not None:
+            return _validate_years(file, START_YEARS, *get_year_data(match))  # type: ignore
 
     return {"check": False, "message": "Invalid copyright header."}
 
 
-def run_check(files: Iterator[Path]) -> None:
-    """Run copyright check."""
+def run_check(
+    files: Iterator[Path],
+    authors: Optional[Tuple[str, ...]] = None,
+) -> None:
+    """Run copyright check.
+
+    :param files: iterator of file paths to check.
+    :param authors: tuple of allowed author names, or None for single-author default.
+    """
     bad_files = set()
     for path in files:
         print("Processing {}".format(path))
-        check_data = check_copyright(path)
+        check_data = check_copyright(path, authors=authors)
         if not check_data["check"]:
             bad_files.add((path, check_data["message"]))
 
@@ -308,20 +396,39 @@ def run_check(files: Iterator[Path]) -> None:
         sys.exit(0)
 
 
-def main(author: str, exclude_parts: Set[str], fix: bool = False) -> None:
-    """Main function."""
+def main(
+    author: str,
+    exclude_parts: Set[str],
+    fix: bool = False,
+    extra_authors: Optional[Tuple[str, ...]] = None,
+    scan_paths: Optional[Tuple[str, ...]] = None,
+) -> None:
+    """Main function.
+
+    :param author: primary author name.
+    :param exclude_parts: set of path parts to exclude.
+    :param fix: whether to fix headers or just check.
+    :param extra_authors: additional author names to accept in copyright headers.
+    :param scan_paths: custom paths to scan. If None, uses default (packages/{author}, tests, scripts).
+    """
+
+    all_authors: Tuple[str, ...] = (author,)
+    if extra_authors:
+        all_authors = (author, *extra_authors)
 
     exclude_files = {Path("scripts", "whitelist.py")}
+
+    if scan_paths:
+        path_tuples = [tuple(p.split("/")) for p in scan_paths]
+    else:
+        path_tuples = [("packages", author), ("tests",), ("scripts",)]
+
     python_files = filter(
         lambda x: x not in exclude_files,
         itertools.chain(
             *(
                 Path(*path).glob("**/*.py")
-                for path in (
-                    ("packages", author),
-                    ("tests",),
-                    ("scripts",),
-                )
+                for path in path_tuples
             )
         ),
     )
@@ -343,7 +450,8 @@ def main(author: str, exclude_parts: Set[str], fix: bool = False) -> None:
         )
 
     python_files_filtered = filter(_file_filter, python_files)
+    authors_tuple = all_authors if len(all_authors) > 1 else None
     if fix:
-        update_headers(python_files_filtered)
+        update_headers(python_files_filtered, authors=authors_tuple)
     else:
-        run_check(python_files_filtered)
+        run_check(python_files_filtered, authors=authors_tuple)
