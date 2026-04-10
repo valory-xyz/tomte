@@ -79,12 +79,17 @@ def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan
     "--http-skips", "-n", multiple=True, help="Http urls to skip."
 )
 @click.option("--url-skips", "-u", multiple=True, help="Urls to skip.")
+@click.option(
+    "--check-internal", is_flag=True, default=False,
+    help="Also validate internal doc links, anchors, and images.",
+)
 def check_doc_links(
     http_skips: Tuple[str, ...],
     url_skips: Tuple[str, ...],
+    check_internal: bool,
 ) -> None:
     """Check doc links on all the doc .md files."""
-    check_doc_links_main(http_skips, url_skips)
+    check_doc_links_main(http_skips, url_skips, check_internal=check_internal)
 
 
 @click.command()
