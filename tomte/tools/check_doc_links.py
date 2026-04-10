@@ -82,7 +82,11 @@ def check_file(
     url_skips = url_skips or URL_SKIPS
 
     text = read_file(md_file)
-    m = re.findall(URL_REGEX, text)
+    # Strip fenced code blocks and inline code to avoid extracting URLs
+    # from code examples (e.g. requests.get('http://127.0.0.1:8000'))
+    text_no_code = re.sub(r"```[^`]*```", "", text, flags=re.DOTALL)
+    text_no_code = re.sub(r"`[^`]+`", "", text_no_code)
+    m = re.findall(URL_REGEX, text_no_code)
     http_links = []
     broken_links = []
 
@@ -121,6 +125,7 @@ def check_file(
         except (
             requests.exceptions.RetryError,
             requests.exceptions.ConnectionError,
+            requests.exceptions.InvalidURL,
         ) as e:
             broken_links.append({"url": url, "status_code": e})
 
