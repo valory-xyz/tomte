@@ -84,7 +84,9 @@ def check_file(
     text = read_file(md_file)
     # Strip fenced code blocks and inline code to avoid extracting URLs
     # from code examples (e.g. requests.get('http://127.0.0.1:8000'))
-    text_no_code = re.sub(r"```[^`]*```", "", text, flags=re.DOTALL)
+    # Uses non-greedy .*? with DOTALL to handle backticks inside code blocks
+    text_no_code = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text_no_code = re.sub(r"``[^`]+``", "", text_no_code)
     text_no_code = re.sub(r"`[^`]+`", "", text_no_code)
     m = re.findall(URL_REGEX, text_no_code)
     http_links = []
