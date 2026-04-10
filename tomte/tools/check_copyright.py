@@ -226,7 +226,7 @@ def _validate_years(
             check_info["error_code"] = ErrorTypes.END_YEAR_WRONG
             return check_info
 
-    if end_year is None and modification_date.year > start_year:
+    if end_year is None and check_end_year and modification_date.year > start_year:
         check_info["check"] = False
         check_info["message"] = f"Missing later year ({start_year}-20..)"
         check_info["error_code"] = ErrorTypes.END_YEAR_MISSING
