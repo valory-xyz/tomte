@@ -36,7 +36,7 @@ import subprocess  # nosec
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple, cast, Set
+from typing import Dict, Iterator, Optional, Set, Tuple, cast
 
 BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
@@ -70,25 +70,27 @@ HEADER_REGEX = re.compile(
 )
 
 
-def _build_header_regex(authors: Tuple[str, ...]) -> re.Pattern:
-    """Build a header regex that matches any of the given authors.
+def _build_multi_author_header_regex(authors: Tuple[str, ...]) -> re.Pattern:
+    """Build a header regex that matches multiple copyright lines.
 
-    Supports single or multiple copyright lines in the header.
+    This builder is for multi-author headers only (2+ authors).
+    For single-author, use the default HEADER_REGEX.
 
-    :param authors: tuple of author names.
+    :param authors: tuple of author names (must have len >= 2).
     :return: compiled regex pattern.
     """
-    if len(authors) == 1:
-        copyright_pattern = r"#   Copyright ((20\d\d)(-20\d\d)?) " + re.escape(authors[0])
-    else:
-        # Match one or more copyright lines for any of the given authors
-        single_line = r"#   Copyright (?:(?:20\d\d)(?:-20\d\d)?) (?:" + "|".join(re.escape(a) for a in authors) + r")"
-        copyright_pattern = r"(" + single_line + r"\n)+" + r"(?=#\n)"
+    single_line = (
+        r"#   Copyright (?:(?:20\d\d)(?:-20\d\d)?) (?:"
+        + "|".join(re.escape(a) for a in authors)
+        + r")"
+    )
+    copyright_pattern = r"(" + single_line + r"\n)+" + r"(?=#\n)"
     return re.compile(
         r"(#!/usr/bin/env python3\n)?# -\*- coding: utf-8 -\*-\n"
         r"# ------------------------------------------------------------------------------\n"
         r"#\n"
-        + copyright_pattern + r"\n?"
+        + copyright_pattern
+        + r"\n?"
         r"#\n"
         r"#   Licensed under the Apache License, Version 2\.0 \(the \"License\"\);\n"
         r"#   you may not use this file except in compliance with the License\.\n"
@@ -232,7 +234,11 @@ def _validate_years(
 
 
 def fix_header(check_info: Dict) -> bool:
-    """Fix corrupt headers."""
+    """Fix corrupt headers.
+
+    Only supports single-author (Valory AG) headers.
+    Multi-author fix mode is not supported.
+    """
 
     path = cast(Path, check_info.get("path"))
     content = path.read_text()
@@ -283,21 +289,14 @@ def fix_header(check_info: Dict) -> bool:
     return is_update_needed
 
 
-def update_headers(
-    files: Iterator[Path],
-    authors: Optional[Tuple[str, ...]] = None,
-) -> None:
-    """Update headers.
-
-    :param files: iterator of file paths to update.
-    :param authors: tuple of allowed author names, or None for single-author default.
-    """
+def update_headers(files: Iterator[Path]) -> None:
+    """Update headers (single-author mode only)."""
 
     needs_update = []
 
     for path in files:
         print("Checking {}".format(path))
-        check_data = check_copyright(path, authors=authors)
+        check_data = check_copyright(path)
         if not check_data["check"]:
             check_data["path"] = path
             needs_update.append(check_data)
@@ -332,16 +331,16 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
 
     if authors is not None and len(authors) > 1:
         # Multi-author: validate that the header structure is correct,
-        # then check years on each copyright line individually
-        header_regex = _build_header_regex(authors)
+        # then check years on the primary author's copyright line only.
+        # Secondary (historical) authors are accepted as-is.
+        header_regex = _build_multi_author_header_regex(authors)
         match = header_regex.match(content)
         if match is None:
             return {"check": False, "message": "Invalid copyright header."}
 
-        # Find all copyright lines; only validate the primary author's years.
-        # Secondary (historical) authors are accepted as-is.
         primary_author = authors[0]
-        for line_match in COPYRIGHT_LINE_REGEX.finditer(content[:500]):
+        primary_result = None
+        for line_match in COPYRIGHT_LINE_REGEX.finditer(match.group(0)):
             line_author = line_match.group(4).strip()
             year_string = line_match.group(1)
             if "-" in year_string:
@@ -350,12 +349,15 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
                 start_year, end_year = int(year_string), None
 
             if line_author == primary_author:
-                result = _validate_years(file, START_YEARS, start_year, end_year)
-                if not result["check"]:
-                    return result
+                primary_result = _validate_years(
+                    file, START_YEARS, start_year, end_year
+                )
+                if not primary_result["check"]:
+                    return primary_result
 
-        return {"check": True, "message": "OK", "start_year": None, "end_year": None,
-                "last_modification": get_modification_date(file), "error_code": ErrorTypes.NO_ERROR}
+        if primary_result is not None:
+            return primary_result
+        return {"check": False, "message": "Primary author not found in header."}
     else:
         match = HEADER_REGEX.match(content)
         if match is not None:
@@ -397,31 +399,36 @@ def run_check(
 
 
 def main(
-    author: str,
+    authors: Tuple[str, ...],
     exclude_parts: Set[str],
     fix: bool = False,
-    extra_authors: Optional[Tuple[str, ...]] = None,
     scan_paths: Optional[Tuple[str, ...]] = None,
 ) -> None:
     """Main function.
 
-    :param author: primary author name.
+    :param authors: tuple of author names. First author is the primary (used for fix mode
+        and year validation). Additional authors are accepted as historical.
     :param exclude_parts: set of path parts to exclude.
     :param fix: whether to fix headers or just check.
-    :param extra_authors: additional author names to accept in copyright headers.
     :param scan_paths: custom paths to scan. If None, uses default (packages/{author}, tests, scripts).
     """
 
-    all_authors: Tuple[str, ...] = (author,)
-    if extra_authors:
-        all_authors = (author, *extra_authors)
+    if fix and len(authors) > 1:
+        print(
+            "Error: fix mode is not supported with multiple authors. "
+            "Multi-author headers contain historical copyright lines that "
+            "should not be auto-modified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
+    primary_author = authors[0]
     exclude_files = {Path("scripts", "whitelist.py")}
 
     if scan_paths:
         path_tuples = [tuple(p.split("/")) for p in scan_paths]
     else:
-        path_tuples = [("packages", author), ("tests",), ("scripts",)]
+        path_tuples = [("packages", primary_author), ("tests",), ("scripts",)]
 
     python_files = filter(
         lambda x: x not in exclude_files,
@@ -450,8 +457,8 @@ def main(
         )
 
     python_files_filtered = filter(_file_filter, python_files)
-    authors_tuple = all_authors if len(all_authors) > 1 else None
+    authors_tuple = authors if len(authors) > 1 else None
     if fix:
-        update_headers(python_files_filtered, authors=authors_tuple)
+        update_headers(python_files_filtered)
     else:
         run_check(python_files_filtered, authors=authors_tuple)

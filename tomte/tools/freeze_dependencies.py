@@ -32,7 +32,8 @@ def main(
     """Freeze pip dependencies to requirements format.
 
     :param output_path: path to write requirements to. If None, prints to stdout.
-    :param exclude_packages: package names to exclude from output.
+    :param exclude_packages: package names to exclude from output. Handles both
+        dash and underscore variants (e.g. ``open-autonomy`` matches ``open_autonomy``).
     """
     pip_freeze_call = subprocess.Popen(  # nosec  # pylint: disable=consider-using-with
         ["pip", "freeze"], stdout=subprocess.PIPE
@@ -42,11 +43,16 @@ def main(
 
     if exclude_packages:
         for pkg in exclude_packages:
+            # Normalize dashes/underscores so that --exclude-package open-autonomy
+            # also matches open_autonomy==... in pip freeze output (and vice versa).
+            # Split on separators first, escape each part, then rejoin with [-_].
+            parts = re.split(r"[-_]", pkg)
+            normalized = "[-_]".join(re.escape(p) for p in parts)
             requirements = re.sub(
-                rf"^{re.escape(pkg)}(==.*| .*)?\n",
+                rf"^{normalized}(==.*| .*)?\n",
                 "",
                 requirements,
-                flags=re.MULTILINE,
+                flags=re.MULTILINE | re.IGNORECASE,
             )
 
     if output_path is None:
