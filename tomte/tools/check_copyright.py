@@ -454,12 +454,12 @@ def check_copyright(
                 return primary_result
 
         for (s_start, s_end) in secondary_years_list:
-            # Only check end year on secondary authors in fix mode when
-            # there is no primary author (to detect files needing one added).
-            # In mixed files, secondary lines are frozen historical data.
+            # Secondary author lines are frozen historical data — never
+            # validate their end year. For secondary-only files needing a
+            # primary author, the post-loop block handles detection.
             secondary_result = _validate_years(
                 file, START_YEARS_HISTORICAL, s_start, s_end,
-                check_end_year=fix_mode and not has_primary,
+                check_end_year=False,
             )
             if not secondary_result["check"]:
                 secondary_result.update(metadata)

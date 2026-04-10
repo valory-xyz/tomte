@@ -132,7 +132,9 @@ def check_file(
 
 
 LINK_PATTERN_HTML = re.compile(r'(?<=<a href=")[^"]*')
-LINK_PATTERN_MD = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+# Negative lookbehind (?<!!) excludes markdown image syntax ![alt](path)
+LINK_PATTERN_MD = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")
+MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]+)\]\(([^)]+)\)")
 IMAGE_PATTERN = re.compile(r'<img[^>]+src="([^">]+)"')
 ANCHOR_TAG_PATTERN = re.compile(r"<a.*?>(.+?)</a>")
 DOCS_DIR = Path("docs")
@@ -185,12 +187,21 @@ def _check_internal_links(
         except ValueError as e:
             errors.append(str(e))
 
-    # Check <img src="..."> tags
+    # Check HTML <img src="..."> and markdown ![alt](path) images
     for match in IMAGE_PATTERN.finditer(text):
         src = match.group(1)
         if _is_external_url(src):
             continue
-        # Resolve relative to the file's parent directory
+        img_path = (file.parent / src).resolve()
+        if not img_path.exists():
+            errors.append(
+                f"Image path={src} in file={file} not found!"
+            )
+
+    for match in MD_IMAGE_PATTERN.finditer(text):
+        src = match.group(2).strip()
+        if _is_external_url(src):
+            continue
         img_path = (file.parent / src).resolve()
         if not img_path.exists():
             errors.append(
