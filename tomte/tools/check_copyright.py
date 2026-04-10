@@ -36,7 +36,7 @@ import subprocess  # nosec
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Set, Tuple, cast
+from typing import Dict, Iterator, List, Optional, Set, Tuple, cast
 
 BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
@@ -235,11 +235,19 @@ def _validate_years(
     return check_info
 
 
-def fix_header(check_info: Dict) -> bool:
+def fix_header(
+    check_info: Dict,
+    authors: Optional[Tuple[str, ...]] = None,
+) -> bool:
     """Fix corrupt headers.
 
-    Only supports single-author (Valory AG) headers.
-    Multi-author fix mode is not supported.
+    Supports both single-author and multi-author headers.
+    For multi-author: updates primary author year, preserves secondary lines.
+    For secondary-only files: adds a primary author copyright line.
+
+    :param check_info: check result dict from check_copyright.
+    :param authors: tuple of author names. First is primary.
+    :return: True if the file was updated.
     """
 
     path = cast(Path, check_info.get("path"))
@@ -248,6 +256,64 @@ def fix_header(check_info: Dict) -> bool:
     is_update_needed = False
     missing_header = False
 
+    if authors and len(authors) > 1:
+        # Multi-author fix mode
+        primary_author = authors[0]
+        header_type = check_info.get("header_type", "")
+        secondary_lines: List[str] = check_info.get("secondary_lines", [])
+        header_regex = _build_multi_author_header_regex(authors)
+
+        if header_type == "":
+            # No header_type means no valid header was found (match was None).
+            # Insert a fresh header with primary author only.
+            mod_year = get_modification_date(path).year
+            copyright_string = f"#   Copyright {mod_year} {primary_author}"
+            new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
+            new_header = SHEBANG + "\n" + new_header
+            if content != "":
+                new_header += "\n\n"
+            path.write_text(new_header + content)
+            return True
+
+        if header_type == "secondary_only":
+            # File has only secondary author(s) — add primary author line
+            mod_year = check_info["last_modification"].year
+            copyright_string = f"#   Copyright {mod_year} {primary_author}"
+            for line in secondary_lines:
+                copyright_string += f"\n{line}"
+            is_update_needed = True
+
+        elif header_type in ("mixed", "primary_only"):
+            error_code = check_info.get("error_code")
+            if error_code in (ErrorTypes.END_YEAR_WRONG, ErrorTypes.END_YEAR_MISSING):
+                copyright_string = "#   Copyright {start}-{end} {author}".format(
+                    start=check_info["start_year"],
+                    end=check_info["last_modification"].year,
+                    author=primary_author,
+                )
+                for line in secondary_lines:
+                    copyright_string += f"\n{line}"
+                is_update_needed = True
+            elif error_code == ErrorTypes.START_YEAR_GT_END_YEAR:
+                copyright_string = "#   Copyright {end}-{start} {author}".format(
+                    start=check_info["start_year"],
+                    end=check_info["last_modification"].year,
+                    author=primary_author,
+                )
+                for line in secondary_lines:
+                    copyright_string += f"\n{line}"
+                is_update_needed = True
+
+        if is_update_needed:
+            new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
+            if SHEBANG in content:
+                new_header = SHEBANG + "\n" + new_header
+            updated_content = header_regex.sub(new_header, content)
+            path.write_text(updated_content)
+
+        return is_update_needed
+
+    # Single-author fix mode
     if "error_code" not in check_info:
         copyright_string = "#   Copyright {start_year}-{end_year} Valory AG".format(
             start_year=BIRTH_YEAR,
@@ -291,14 +357,23 @@ def fix_header(check_info: Dict) -> bool:
     return is_update_needed
 
 
-def update_headers(files: Iterator[Path]) -> None:
-    """Update headers (single-author mode only)."""
+def update_headers(
+    files: Iterator[Path],
+    authors: Optional[Tuple[str, ...]] = None,
+) -> None:
+    """Update headers.
+
+    :param files: iterator of file paths to check.
+    :param authors: tuple of author names. First is primary. If multiple,
+        enables multi-author fix mode.
+    """
 
     needs_update = []
+    authors_tuple = authors if authors and len(authors) > 1 else None
 
     for path in files:
         print("Checking {}".format(path))
-        check_data = check_copyright(path)
+        check_data = check_copyright(path, authors=authors_tuple, fix_mode=True)
         if not check_data["check"]:
             check_data["path"] = path
             needs_update.append(check_data)
@@ -308,7 +383,7 @@ def update_headers(files: Iterator[Path]) -> None:
         cannot_update = []
         for check_data in needs_update:
             print("Updating {}".format(check_data["path"]))
-            if not fix_header(check_data):
+            if not fix_header(check_data, authors=authors):
                 cannot_update.append(check_data)
 
         if len(cannot_update) > 0:
@@ -318,7 +393,11 @@ def update_headers(files: Iterator[Path]) -> None:
         print("No update needed.")
 
 
-def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Dict:
+def check_copyright(
+    file: Path,
+    authors: Optional[Tuple[str, ...]] = None,
+    fix_mode: bool = False,
+) -> Dict:
     """
     Given a file, check if the header stuff is in place.
 
@@ -327,22 +406,24 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
 
     :param file: the file to check.
     :param authors: tuple of allowed author names. If None, uses default single-author regex.
+    :param fix_mode: if True, returns extra metadata for fix_header and enables
+        end-year checking on secondary authors to detect files needing primary author.
     :return: True if the file is compliant with the checks, False otherwise.
     """
     content = file.read_text()
 
     if authors is not None and len(authors) > 1:
-        # Multi-author: validate that the header structure is correct,
-        # then check years on the primary author's copyright line only.
-        # Secondary (historical) authors are accepted as-is.
         header_regex = _build_multi_author_header_regex(authors)
         match = header_regex.match(content)
         if match is None:
             return {"check": False, "message": "Invalid copyright header."}
 
         primary_author = authors[0]
-        primary_result = None
-        last_secondary_result = None
+        secondary_lines: List[str] = []
+        primary_years = None  # (start_year, end_year) or None
+        secondary_years_list = []  # [(start_year, end_year), ...]
+
+        # First pass: collect all copyright lines
         for line_match in COPYRIGHT_LINE_REGEX.finditer(match.group(0)):
             line_author = line_match.group(4).strip()
             year_string = line_match.group(1)
@@ -352,27 +433,56 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
                 start_year, end_year = int(year_string), None
 
             if line_author == primary_author:
-                primary_result = _validate_years(
-                    file, START_YEARS, start_year, end_year
-                )
-                if not primary_result["check"]:
-                    return primary_result
+                primary_years = (start_year, end_year)
             else:
-                # Secondary (historical) authors: validate against broader
-                # year range, matching open-aea's behavior for FetchAI files
-                last_secondary_result = _validate_years(
-                    file, START_YEARS_HISTORICAL, start_year, end_year,
-                    check_end_year=False,
-                )
-                if not last_secondary_result["check"]:
-                    return last_secondary_result
+                secondary_lines.append(line_match.group(0).strip())
+                secondary_years_list.append((start_year, end_year))
 
-        # If the primary author was found, return its validation result.
-        # If only secondary (historical) authors are present, return their result.
-        if primary_result is not None:
+        has_primary = primary_years is not None
+        metadata = {
+            "secondary_lines": secondary_lines,
+        }
+
+        # Second pass: validate
+        if has_primary:
+            primary_result = _validate_years(
+                file, START_YEARS, primary_years[0], primary_years[1]
+            )
+            primary_result.update(metadata)
+            primary_result["header_type"] = "mixed" if secondary_lines else "primary_only"
+            if not primary_result["check"]:
+                return primary_result
+
+        for (s_start, s_end) in secondary_years_list:
+            # Secondary author lines are frozen historical data — never
+            # validate their end year. For secondary-only files needing a
+            # primary author, the post-loop block handles detection.
+            secondary_result = _validate_years(
+                file, START_YEARS_HISTORICAL, s_start, s_end,
+                check_end_year=False,
+            )
+            if not secondary_result["check"]:
+                secondary_result.update(metadata)
+                secondary_result["header_type"] = "secondary_only" if not has_primary else "mixed"
+                return secondary_result
+
+        # All validations passed
+        if has_primary:
+            primary_result.update(metadata)
             return primary_result
-        if last_secondary_result is not None:
-            return last_secondary_result
+
+        # Secondary-only file that passed validation
+        last_secondary_result = _validate_years(
+            file, START_YEARS_HISTORICAL,
+            secondary_years_list[-1][0], secondary_years_list[-1][1],
+            check_end_year=False,
+        )
+        last_secondary_result.update(metadata)
+        last_secondary_result["header_type"] = "secondary_only"
+        if fix_mode and last_secondary_result["check"]:
+            last_secondary_result["check"] = False
+            last_secondary_result["message"] = "Missing primary author copyright line."
+        return last_secondary_result
     else:
         match = HEADER_REGEX.match(content)
         if match is not None:
@@ -428,15 +538,6 @@ def main(
     :param scan_paths: custom paths to scan. If None, uses default (packages/{author}, tests, scripts).
     """
 
-    if fix and len(authors) > 1:
-        print(
-            "Error: fix mode is not supported with multiple authors. "
-            "Multi-author headers contain historical copyright lines that "
-            "should not be auto-modified.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     primary_author = authors[0]
     exclude_files = {Path("scripts", "whitelist.py")}
 
@@ -474,6 +575,6 @@ def main(
     python_files_filtered = filter(_file_filter, python_files)
     authors_tuple = authors if len(authors) > 1 else None
     if fix:
-        update_headers(python_files_filtered)
+        update_headers(python_files_filtered, authors=authors)
     else:
         run_check(python_files_filtered, authors=authors_tuple)

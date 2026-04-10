@@ -23,10 +23,11 @@
 
 import re
 import sys
+import xml.etree.ElementTree as ET  # nosec
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 import urllib3  # type: ignore
@@ -51,7 +52,7 @@ HTTP_SKIPS = [
 # Special links that are allowed to respond with an error status
 # Remove non-url-allowed characters like ` before adding them here
 URL_SKIPS = [
-    "https://gateway.autonolas.tech/ipfs/<hash>,",  # non link (400)
+    "https://gateway.autonolas.tech/ipfs/<hash>",  # non link (400)
     "https://github.com/valory-xyz/open-autonomy/trunk/infrastructure",  # svn link (404)
     "http://host.docker.internal:8545",  # internal (ERR_NAME_NOT_RESOLVED)
 ]
@@ -130,9 +131,161 @@ def check_file(
     }
 
 
+LINK_PATTERN_HTML = re.compile(r'(?<=<a href=")[^"]*')
+# Negative lookbehind (?<!!) excludes markdown image syntax ![alt](path)
+LINK_PATTERN_MD = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")
+MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]+)\]\(([^)]+)\)")
+IMAGE_PATTERN = re.compile(r'<img[^>]+src="([^">]+)"')
+ANCHOR_TAG_PATTERN = re.compile(r"<a.*?>(.+?)</a>")
+DOCS_DIR = Path("docs")
+
+
+def _is_external_url(url: str) -> bool:
+    """Check if a URL is external."""
+    return url.startswith("https://") or url.startswith("http://")
+
+
+def _check_internal_links(
+    file: Path,
+    all_docs_files: Set[Path],
+) -> List[str]:
+    """Check internal links in a documentation file.
+
+    Validates:
+    - HTML <a href="..."> and markdown [text](url) links point to existing doc files
+    - Anchor fragments (#section) exist in target files (heuristic: substring match)
+    - <img src="..."> images exist on disk
+    - External <a> tags have target="_blank"
+
+    :param file: path to the markdown file to check.
+    :param all_docs_files: set of all documentation file paths.
+    :return: list of error messages.
+    """
+    errors: List[str] = []
+    text = file.read_text(encoding="utf-8")
+
+    # Check HTML <a href="..."> links
+    for match in LINK_PATTERN_HTML.finditer(text):
+        url = match.group()
+        if _is_external_url(url):
+            continue
+        try:
+            _validate_internal_url(file, url, all_docs_files)
+        except ValueError as e:
+            errors.append(str(e))
+
+    # Check markdown [text](url) links
+    for match in LINK_PATTERN_MD.finditer(text):
+        url = match.group(2).strip()
+        if _is_external_url(url):
+            continue
+        if url.startswith("#"):
+            # Same-file anchor — skip (would need heading parsing)
+            continue
+        try:
+            _validate_internal_url(file, url, all_docs_files)
+        except ValueError as e:
+            errors.append(str(e))
+
+    # Check HTML <img src="..."> and markdown ![alt](path) images
+    for match in IMAGE_PATTERN.finditer(text):
+        src = match.group(1)
+        if _is_external_url(src):
+            continue
+        img_path = (file.parent / src).resolve()
+        if not img_path.exists():
+            errors.append(
+                f"Image path={src} in file={file} not found!"
+            )
+
+    for match in MD_IMAGE_PATTERN.finditer(text):
+        src = match.group(2).strip()
+        if _is_external_url(src):
+            continue
+        img_path = (file.parent / src).resolve()
+        if not img_path.exists():
+            errors.append(
+                f"Image path={src} in file={file} not found!"
+            )
+
+    # Check external <a> tags have target="_blank"
+    for match in ANCHOR_TAG_PATTERN.finditer(text):
+        try:
+            tag = ET.fromstring(match.group())  # nosec
+        except ET.ParseError:
+            continue
+        href = tag.attrib.get("href")
+        target = tag.attrib.get("target")
+        if href and _is_external_url(href) and target != "_blank":
+            errors.append(
+                f"External link href={href} in file={file} missing target=\"_blank\"."
+            )
+
+    return errors
+
+
+def _validate_internal_url(
+    file: Path,
+    url: str,
+    all_docs_files: Set[Path],
+) -> None:
+    """Validate an internal relative URL points to an existing doc file.
+
+    Resolves the URL relative to the source file's parent directory.
+
+    :param file: the source file.
+    :param url: the relative URL to validate.
+    :param all_docs_files: set of all doc file paths.
+    :raises ValueError: if the link is invalid.
+    """
+    hash_index = url.find("#")
+    if hash_index == 0:
+        # Pure anchor link (#section) — skip
+        return
+
+    if hash_index != -1:
+        path_part = url[:hash_index]
+        anchor = url[hash_index:]
+    else:
+        path_part = url
+        anchor = ""
+
+    path_part = path_part.rstrip("/")
+
+    # Resolve relative to source file's directory
+    if path_part.endswith(".md"):
+        target_path = (file.parent / path_part).resolve()
+    else:
+        target_path = (file.parent / f"{path_part}.md").resolve()
+
+    # Normalize to project-relative for comparison with all_docs_files
+    try:
+        target_relative = target_path.relative_to(Path.cwd())
+    except ValueError:
+        raise ValueError(
+            f"Path={url} in file={file} resolves outside project root!"
+        )
+
+    if target_relative not in all_docs_files:
+        raise ValueError(
+            f"Path={target_relative} found in file={file} does not exist!"
+        )
+
+    if anchor:
+        # Heuristic: check if the anchor string appears anywhere in the target file.
+        # This is a naive substring match — it may match inside code blocks or comments.
+        # For strict validation, heading parsing would be needed.
+        target_text = target_path.read_text(encoding="utf-8")
+        if anchor not in target_text:
+            raise ValueError(
+                f"Anchor={anchor} not found in file={target_relative} (linked from {file})!"
+            )
+
+
 def main(
     http_skips: Optional[List[str]] = None,
     url_skips: Optional[List[str]] = None,
+    check_internal: bool = False,
 ) -> None:  # pylint: disable=too-many-locals
     """Check for broken or HTTP links"""
     all_md_files = [
@@ -201,7 +354,24 @@ def main(
                 f"Found HTTP urls in the docs:\n{http_links_str}\nTry to use HTTPS equivalent urls or add them to 'http_skips' if not possible"
             )
 
-        if broken_links or http_links:
+        # Internal link checks (opt-in)
+        internal_errors: Dict[str, List[str]] = {}
+        if check_internal and DOCS_DIR.exists():
+            all_docs_files = set(DOCS_DIR.rglob("*.md"))
+            for doc_file in sorted(all_docs_files):
+                print(f"Checking internal links in {doc_file}...")
+                errs = _check_internal_links(doc_file, all_docs_files)
+                if errs:
+                    internal_errors[str(doc_file)] = errs
+
+        if internal_errors:
+            internal_str = "\n".join(
+                f"{fname}: {errs}"
+                for fname, errs in internal_errors.items()
+            )
+            print(f"Found internal link errors:\n{internal_str}")
+
+        if broken_links or http_links or internal_errors:
             sys.exit(1)
 
         print("OK")
