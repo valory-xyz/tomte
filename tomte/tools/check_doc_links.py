@@ -132,9 +132,9 @@ def check_file(
 
 
 LINK_PATTERN_HTML = re.compile(r'(?<=<a href=")[^"]*')
+LINK_PATTERN_MD = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 IMAGE_PATTERN = re.compile(r'<img[^>]+src="([^">]+)"')
 ANCHOR_TAG_PATTERN = re.compile(r"<a.*?>(.+?)</a>")
-RELATIVE_PATH_PREFIX = "../"
 DOCS_DIR = Path("docs")
 
 
@@ -150,8 +150,8 @@ def _check_internal_links(
     """Check internal links in a documentation file.
 
     Validates:
-    - HTML <a href="..."> links point to existing doc files
-    - Anchor fragments (#section) exist in target files
+    - HTML <a href="..."> and markdown [text](url) links point to existing doc files
+    - Anchor fragments (#section) exist in target files (heuristic: substring match)
     - <img src="..."> images exist on disk
     - External <a> tags have target="_blank"
 
@@ -161,16 +161,27 @@ def _check_internal_links(
     """
     errors: List[str] = []
     text = file.read_text(encoding="utf-8")
-    is_index = file == DOCS_DIR / "index.md"
 
     # Check HTML <a href="..."> links
     for match in LINK_PATTERN_HTML.finditer(text):
         url = match.group()
         if _is_external_url(url):
             continue
-        # Validate internal relative link
         try:
-            _validate_internal_url(file, url, all_docs_files, is_index)
+            _validate_internal_url(file, url, all_docs_files)
+        except ValueError as e:
+            errors.append(str(e))
+
+    # Check markdown [text](url) links
+    for match in LINK_PATTERN_MD.finditer(text):
+        url = match.group(2).strip()
+        if _is_external_url(url):
+            continue
+        if url.startswith("#"):
+            # Same-file anchor — skip (would need heading parsing)
+            continue
+        try:
+            _validate_internal_url(file, url, all_docs_files)
         except ValueError as e:
             errors.append(str(e))
 
@@ -179,12 +190,12 @@ def _check_internal_links(
         src = match.group(1)
         if _is_external_url(src):
             continue
-        if src.startswith(RELATIVE_PATH_PREFIX):
-            img_path = DOCS_DIR / src[len(RELATIVE_PATH_PREFIX):]
-            if not img_path.exists():
-                errors.append(
-                    f"Image path={img_path} in file={file} not found!"
-                )
+        # Resolve relative to the file's parent directory
+        img_path = (file.parent / src).resolve()
+        if not img_path.exists():
+            errors.append(
+                f"Image path={src} in file={file} not found!"
+            )
 
     # Check external <a> tags have target="_blank"
     for match in ANCHOR_TAG_PATTERN.finditer(text):
@@ -206,51 +217,57 @@ def _validate_internal_url(
     file: Path,
     url: str,
     all_docs_files: Set[Path],
-    is_index: bool = False,
 ) -> None:
     """Validate an internal relative URL points to an existing doc file.
+
+    Resolves the URL relative to the source file's parent directory.
 
     :param file: the source file.
     :param url: the relative URL to validate.
     :param all_docs_files: set of all doc file paths.
-    :param is_index: whether the source file is the index.
     :raises ValueError: if the link is invalid.
     """
-    if not url.startswith(RELATIVE_PATH_PREFIX) and not is_index:
-        if url.startswith("#"):
-            return
-        raise ValueError(
-            f"Invalid relative path={url} in file={file}!"
-        )
-
-    if ".md" in url:
-        raise ValueError(
-            f"Path={url} contains invalid `.md` extension in file={file}!"
-        )
-
     hash_index = url.find("#")
-    if hash_index == -1:
-        n_url = url[len(RELATIVE_PATH_PREFIX):] if not is_index else url
-        n_url = n_url.rstrip("/")
-        target_path = DOCS_DIR / f"{n_url}.md"
-        anchor = ""
-    else:
-        path_part = url[:hash_index]
-        n_url = path_part[len(RELATIVE_PATH_PREFIX):] if not is_index else path_part
-        n_url = n_url.rstrip("/")
-        target_path = DOCS_DIR / f"{n_url}.md"
-        anchor = url[hash_index:]
+    if hash_index == 0:
+        # Pure anchor link (#section) — skip
+        return
 
-    if target_path not in all_docs_files:
+    if hash_index != -1:
+        path_part = url[:hash_index]
+        anchor = url[hash_index:]
+    else:
+        path_part = url
+        anchor = ""
+
+    path_part = path_part.rstrip("/")
+
+    # Resolve relative to source file's directory
+    if path_part.endswith(".md"):
+        target_path = (file.parent / path_part).resolve()
+    else:
+        target_path = (file.parent / f"{path_part}.md").resolve()
+
+    # Normalize to project-relative for comparison with all_docs_files
+    try:
+        target_relative = target_path.relative_to(Path.cwd())
+    except ValueError:
         raise ValueError(
-            f"Path={target_path} found in file={file} does not exist!"
+            f"Path={url} in file={file} resolves outside project root!"
+        )
+
+    if target_relative not in all_docs_files:
+        raise ValueError(
+            f"Path={target_relative} found in file={file} does not exist!"
         )
 
     if anchor:
+        # Heuristic: check if the anchor string appears anywhere in the target file.
+        # This is a naive substring match — it may match inside code blocks or comments.
+        # For strict validation, heading parsing would be needed.
         target_text = target_path.read_text(encoding="utf-8")
         if anchor not in target_text:
             raise ValueError(
-                f"Anchor={anchor} not found in file={target_path} (linked from {file})!"
+                f"Anchor={anchor} not found in file={target_relative} (linked from {file})!"
             )
 
 
@@ -330,8 +347,7 @@ def main(
         internal_errors: Dict[str, List[str]] = {}
         if check_internal and DOCS_DIR.exists():
             all_docs_files = set(DOCS_DIR.rglob("*.md"))
-            docs_top_level = list(DOCS_DIR.glob("*.md"))
-            for doc_file in docs_top_level:
+            for doc_file in sorted(all_docs_files):
                 print(f"Checking internal links in {doc_file}...")
                 errs = _check_internal_links(doc_file, all_docs_files)
                 if errs:

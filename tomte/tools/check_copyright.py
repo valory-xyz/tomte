@@ -261,11 +261,23 @@ def fix_header(
         primary_author = authors[0]
         header_type = check_info.get("header_type", "")
         secondary_lines: List[str] = check_info.get("secondary_lines", [])
-        header_regex = check_info.get("header_regex")
+        header_regex = _build_multi_author_header_regex(authors)
+
+        if header_type == "":
+            # No header_type means no valid header was found (match was None).
+            # Insert a fresh header with primary author only.
+            mod_year = get_modification_date(path).year
+            copyright_string = f"#   Copyright {mod_year} {primary_author}"
+            new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
+            new_header = SHEBANG + "\n" + new_header
+            if content != "":
+                new_header += "\n\n"
+            path.write_text(new_header + content)
+            return True
 
         if header_type == "secondary_only":
             # File has only secondary author(s) — add primary author line
-            mod_year = check_info.get("last_modification", get_modification_date(path)).year
+            mod_year = check_info["last_modification"].year
             copyright_string = f"#   Copyright {mod_year} {primary_author}"
             for line in secondary_lines:
                 copyright_string += f"\n{line}"
@@ -292,7 +304,7 @@ def fix_header(
                     copyright_string += f"\n{line}"
                 is_update_needed = True
 
-        if is_update_needed and header_regex:
+        if is_update_needed:
             new_header = HEADER_TEMPLATE.format(copyright_string=copyright_string)
             if SHEBANG in content:
                 new_header = SHEBANG + "\n" + new_header
@@ -409,7 +421,7 @@ def check_copyright(
         primary_author = authors[0]
         secondary_lines: List[str] = []
         primary_years = None  # (start_year, end_year) or None
-        secondary_years_list = []  # [(start, end, author_line_str), ...]
+        secondary_years_list = []  # [(start_year, end_year), ...]
 
         # First pass: collect all copyright lines
         for line_match in COPYRIGHT_LINE_REGEX.finditer(match.group(0)):
@@ -429,7 +441,6 @@ def check_copyright(
         has_primary = primary_years is not None
         metadata = {
             "secondary_lines": secondary_lines,
-            "header_regex": header_regex,
         }
 
         # Second pass: validate
