@@ -33,7 +33,7 @@ def format_code() -> None:
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
 def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
     """Run copyright formatter."""
-    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path or None)
+    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path)
 
 
 @click.command()
@@ -71,7 +71,7 @@ def check_security() -> None:
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
 def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
     """Check copyright on all the files in a project."""
-    check_copyright_main(author, set(exclude_part), scan_paths=scan_path or None)
+    check_copyright_main(author, set(exclude_part), scan_paths=scan_path)
 
 
 @click.command()
@@ -84,7 +84,7 @@ def check_doc_links(
     url_skips: Tuple[str, ...],
 ) -> None:
     """Check doc links on all the doc .md files."""
-    check_doc_links_main(http_skips or None, url_skips or None)
+    check_doc_links_main(http_skips, url_skips)
 
 
 @click.command()
@@ -99,7 +99,7 @@ def check_readme(package_path: str) -> None:
 @click.option("--exclude-package", multiple=True, help="Package name(s) to exclude from output.")
 def freeze_dependencies(output_path: Optional[str], exclude_package: Tuple[str, ...]) -> None:
     """Freeze dependencies."""
-    freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package or None)
+    freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package)
 
 
 @click.command()

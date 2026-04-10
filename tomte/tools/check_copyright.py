@@ -42,6 +42,8 @@ BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
 START_YEARS = tuple(range(BIRTH_YEAR, datetime.today().year + 1))
+# Broader range for secondary/historical authors (e.g. Fetch.AI Limited)
+START_YEARS_HISTORICAL = tuple(range(2018, datetime.today().year + 1))
 SHEBANG = "#!/usr/bin/env python3"
 
 # Default regex for a single-author header (Valory AG)
@@ -340,6 +342,7 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
 
         primary_author = authors[0]
         primary_result = None
+        last_secondary_result = None
         for line_match in COPYRIGHT_LINE_REGEX.finditer(match.group(0)):
             line_author = line_match.group(4).strip()
             year_string = line_match.group(1)
@@ -354,10 +357,22 @@ def check_copyright(file: Path, authors: Optional[Tuple[str, ...]] = None) -> Di
                 )
                 if not primary_result["check"]:
                     return primary_result
+            else:
+                # Secondary (historical) authors: validate against broader
+                # year range, matching open-aea's behavior for FetchAI files
+                last_secondary_result = _validate_years(
+                    file, START_YEARS_HISTORICAL, start_year, end_year,
+                    check_end_year=False,
+                )
+                if not last_secondary_result["check"]:
+                    return last_secondary_result
 
+        # If the primary author was found, return its validation result.
+        # If only secondary (historical) authors are present, return their result.
         if primary_result is not None:
             return primary_result
-        return {"check": False, "message": "Primary author not found in header."}
+        if last_secondary_result is not None:
+            return last_secondary_result
     else:
         match = HEADER_REGEX.match(content)
         if match is not None:
