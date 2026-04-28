@@ -35,6 +35,7 @@ _RESOURCES = [
     ("DARGLINT_CFG", configs.DARGLINT_CFG),
     ("BANDIT_YAML", configs.BANDIT_YAML),
     ("SAFETY_POLICY", configs.SAFETY_POLICY),
+    ("GITLEAKS_TOML", configs.GITLEAKS_TOML),
 ]
 
 
@@ -107,3 +108,25 @@ def test_bandit_yaml_skips_assert_used():
     text = configs.BANDIT_YAML.read_text(encoding="utf-8")
     assert "B101" in text
     assert "exclude_dirs" in text
+
+
+def test_gitleaks_canonical_carries_rules_and_allowlist():
+    """Canonical gitleaks config must ship the 93-rule set + fleet allowlist."""
+    text = configs.GITLEAKS_TOML.read_text(encoding="utf-8")
+    # Rule count: gitleaks `[[rules]]` blocks. The trader-lineage we
+    # standardised on ships 93. Anyone shrinking this is taking
+    # detection coverage off the fleet — guard.
+    rules = text.count("\n[[rules]]")
+    assert rules >= 90, f"gitleaks canonical rule count regressed: {rules}"
+    # Fleet allowlist must include Ethereum addresses (every agent repo
+    # commits public contract addresses) and IPFS CIDs (every package
+    # manifest carries them) — both are canonical false-positives.
+    assert "0x[0-9a-fA-F]{40}" in text, "Ethereum address allowlist missing"
+    assert "bafybei" in text, "IPFS CID allowlist missing"
+    # Trader-specific allowlist *entries* should NOT have leaked in.
+    # (The header comment may reference "ui-build" while explaining the
+    # curation; the regression we're guarding is the literal allowlist
+    # quoted-string entry.)
+    assert "'''ui-build" not in text, (
+        "trader-specific UI build allowlist regex leaked into canonical"
+    )

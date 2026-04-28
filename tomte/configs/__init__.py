@@ -56,6 +56,7 @@ FLAKE8_CFG: Path = _path("flake8.cfg")
 DARGLINT_CFG: Path = _path("darglint.cfg")
 BANDIT_YAML: Path = _path("bandit.yaml")
 SAFETY_POLICY: Path = _path("safety-policy.yml")
+GITLEAKS_TOML: Path = _path("gitleaks.toml")
 
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     "DARGLINT_CFG",
     "BANDIT_YAML",
     "SAFETY_POLICY",
+    "GITLEAKS_TOML",
 ]
