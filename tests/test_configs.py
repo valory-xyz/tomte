@@ -75,8 +75,8 @@ def test_isort_canonical_carries_no_per_repo_packaging_facts():
     """Isort canonical must not encode per-repo packaging identity."""
     parser = configparser.ConfigParser()
     parser.read(configs.ISORT_CFG)
-    assert parser.has_section("settings")
-    settings = parser["settings"]
+    assert parser.has_section("isort")
+    settings = parser["isort"]
     for key in ("known_first_party", "known_packages", "known_local_folder"):
         assert key not in settings, f"unexpected key: {key}"
 
