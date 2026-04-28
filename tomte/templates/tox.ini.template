@@ -225,9 +225,7 @@ deps =
     pip
     open-autonomy[all]==$OPEN_AUTONOMY_VERSION
 commands =
-    autonomy analyse handlers \
-        -h abci -h http -h contract_api -h ledger_api -h signing \
-        $CHECK_HANDLERS_IGNORES
+    autonomy analyse handlers -h abci -h http -h contract_api -h ledger_api -h signing $CHECK_HANDLERS_IGNORES
 
 [testenv:check-doc-hashes]
 skipsdist = True
@@ -243,10 +241,13 @@ skip_install = True
 commands = aea-helpers check-doc-hashes --fix
 
 [testenv:liccheck]
+; liccheck imports pkg_resources from setuptools — tox-uv strips
+; setuptools by default, so we install it explicitly here.
 skipsdist = True
 usedevelop = True
 deps =
     pip
+    setuptools
     tomte[liccheck,cli]$TOMTE_DEP_PIN
 commands =
     tomte freeze-dependencies --output-path {envtmpdir}/requirements.txt

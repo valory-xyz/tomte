@@ -113,10 +113,13 @@ deps = tomte[vulture]$TOMTE_DEP_PIN
 commands = vulture $LINT_TARGETS scripts/whitelist.py
 
 [testenv:liccheck]
+; liccheck imports pkg_resources from setuptools — tox-uv strips
+; setuptools by default, so we install it explicitly here.
 skipsdist = True
 usedevelop = True
 deps =
     pip
+    setuptools
     tomte[liccheck,cli]$TOMTE_DEP_PIN
 commands =
     tomte freeze-dependencies --output-path {envtmpdir}/requirements.txt
