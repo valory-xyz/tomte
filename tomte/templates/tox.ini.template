@@ -188,8 +188,7 @@ deps =
     open-aea==$OPEN_AEA_VERSION
     open-aea-ci-helpers==$OPEN_AEA_VERSION
 commands =
-    aea-ci check-third-party-hashes \
-$UPSTREAM_PINS
+    aea-ci check-third-party-hashes $UPSTREAM_PINS
 
 [testenv:check-abciapp-specs]
 skipsdist = True

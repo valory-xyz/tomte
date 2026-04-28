@@ -53,7 +53,7 @@ _AGENT_DEFAULTS: Dict[str, str] = {
     "extra_deps_packages": "",
     "extra_testenvs": "",
     "extra_mypy_overrides": "",
-    "upstream_pins": "        --upstream valory-xyz/open-autonomy@0.21.19",
+    "upstream_pins": "--upstream valory-xyz/open-autonomy@0.21.19",
     "check_handlers_ignores": "",
     "extra_pylint_ignored_modules": "",
     "extra_pylint_disables": "",
@@ -124,8 +124,8 @@ def _emit_scaffold_section(scaffold_block: Dict[str, str]) -> str:
 
 
 # Multi-line continuation values need re-indenting after configparser strip.
+# upstream_pins is rendered inline now (single line in template) so no indent.
 _INDENT_BY_KEY = {
-    "upstream_pins": 8,         # tox `commands =` continuation depth
     "extra_deps_packages": 4,   # tox `deps =` continuation depth
     "extra_deps": 4,
 }
