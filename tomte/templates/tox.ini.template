@@ -241,13 +241,13 @@ skip_install = True
 commands = aea-helpers check-doc-hashes --fix
 
 [testenv:liccheck]
-; liccheck imports pkg_resources from setuptools — tox-uv strips
-; setuptools by default, so we install it explicitly here.
+; liccheck imports pkg_resources from setuptools. tox-uv strips
+; setuptools by default; setuptools 81+ removed pkg_resources.
 skipsdist = True
 usedevelop = True
 deps =
     pip
-    setuptools
+    setuptools<81
     tomte[liccheck,cli]$TOMTE_DEP_PIN
 commands =
     tomte freeze-dependencies --output-path {envtmpdir}/requirements.txt
