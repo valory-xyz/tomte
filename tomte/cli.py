@@ -11,6 +11,9 @@ from tomte.tools.check_copyright import main as check_copyright_main
 from tomte.tools.check_doc_links import main as check_doc_links_main
 from tomte.tools.check_readme import main as check_readme_main
 from tomte.tools.freeze_dependencies import main as freeze_dependencies_main
+from tomte.tools.freeze_gitleaks import main as freeze_gitleaks_main
+from tomte.tools.render_isort_config import main as render_isort_config_main
+from tomte.tools.render_mypy_config import main as render_mypy_config_main
 
 
 @click.group(name="tomte")  # type: ignore
@@ -106,6 +109,37 @@ def freeze_dependencies(output_path: Optional[str], exclude_package: Tuple[str, 
     freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package)
 
 
+@click.command(name="render-isort-config")
+@click.option("--output", required=True, type=click.Path(), help="Where to write the merged isort.cfg.")
+@click.option("--known-first-party", default="", help="Per-repo `known_first_party` value.")
+@click.option("--known-packages", default="", help="Per-repo `known_packages` value.")
+@click.option("--known-local-folder", default="", help="Per-repo `known_local_folder` value.")
+def render_isort_config(output: str, known_first_party: str, known_packages: str, known_local_folder: str) -> None:
+    """Render tomte canonical isort.cfg + per-repo packaging keys to a merged file."""
+    render_isort_config_main(
+        output=output,
+        known_first_party=known_first_party,
+        known_packages=known_packages,
+        known_local_folder=known_local_folder,
+    )
+
+
+@click.command(name="render-mypy-config")
+@click.option("--output", required=True, type=click.Path(), help="Where to write the merged mypy.ini.")
+@click.option("--append-from", default="", type=click.Path(), help="Path to ini file whose [mypy*] sections layer onto canonical.")
+def render_mypy_config(output: str, append_from: str) -> None:
+    """Render tomte canonical mypy.ini + an additional ini file's [mypy*] sections."""
+    render_mypy_config_main(output=output, append_from=append_from)
+
+
+@click.command(name="freeze-gitleaks")
+@click.option("--output", default=".gitleaksignore", type=click.Path(), help="Where to write the .gitleaksignore.")
+@click.option("--gitleaks-executable", default="gitleaks", help="gitleaks binary on PATH.")
+def freeze_gitleaks(output: str, gitleaks_executable: str) -> None:
+    """Run gitleaks against tomte canonical config and emit current findings as a baseline."""
+    freeze_gitleaks_main(output=output, gitleaks_executable=gitleaks_executable)
+
+
 cli.add_command(freeze_dependencies)
 cli.add_command(format_copyright)
 cli.add_command(format_code)
@@ -115,6 +149,9 @@ cli.add_command(check_doc_links)
 cli.add_command(check_readme)
 cli.add_command(check_security)
 cli.add_command(scaffold_group)
+cli.add_command(render_isort_config)
+cli.add_command(render_mypy_config)
+cli.add_command(freeze_gitleaks)
 
 
 if __name__ == "__main__":

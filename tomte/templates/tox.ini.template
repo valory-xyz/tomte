@@ -94,20 +94,16 @@ commands = black --check {env:SERVICE_SPECIFIC_PACKAGES}
 [testenv:isort]
 skipsdist = True
 skip_install = True
-deps = tomte[isort]==$TOMTE_VERSION
-commands_pre =
-    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_packages = packages\nknown_local_folder = tests\n')"
-commands =
-    isort --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
+deps = tomte[isort,cli]==$TOMTE_VERSION
+commands_pre = tomte render-isort-config --output={envtmpdir}/isort.cfg --known-first-party=$KNOWN_FIRST_PARTY --known-packages=packages --known-local-folder=tests
+commands = isort --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:isort-check]
 skipsdist = True
 skip_install = True
-deps = tomte[isort]==$TOMTE_VERSION
-commands_pre =
-    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_packages = packages\nknown_local_folder = tests\n')"
-commands =
-    isort --check-only --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
+deps = tomte[isort,cli]==$TOMTE_VERSION
+commands_pre = tomte render-isort-config --output={envtmpdir}/isort.cfg --known-first-party=$KNOWN_FIRST_PARTY --known-packages=packages --known-local-folder=tests
+commands = isort --check-only --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:flake8]
 skipsdist = True
@@ -122,11 +118,9 @@ skipsdist = True
 skip_install = True
 deps =
     pip
-    tomte[mypy]==$TOMTE_VERSION
-commands_pre =
-    python -c "from tomte.configs import MYPY_INI; from pathlib import Path; Path(r'{envtmpdir}/mypy.ini').write_text(MYPY_INI.read_text() + '\n' + Path('tox.ini').read_text())"
-commands =
-    mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs {env:SERVICE_SPECIFIC_PACKAGES}
+    tomte[mypy,cli]==$TOMTE_VERSION
+commands_pre = tomte render-mypy-config --output={envtmpdir}/mypy.ini --append-from=tox.ini
+commands = mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:pylint]
 skipsdist = True
