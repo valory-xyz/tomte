@@ -1,27 +1,8 @@
 title = "gitleaks config — tomte canonical"
 
-# Canonical gitleaks ruleset shipped by tomte. Every Valory repo (agent
-# fleet + framework) consumes this directly via:
-#
-#   gitleaks detect --config=$(python -c "from tomte.configs import GITLEAKS_TOML; print(GITLEAKS_TOML)")
-#
-# or, more idiomatically, from a tox env:
-#
+# Canonical gitleaks ruleset. Consumers reference via:
 #   [testenv:gitleaks]
 #   commands = gitleaks detect --config={envsitepackagesdir}/tomte/configs/gitleaks.toml ...
-#
-# Repos do NOT carry their own `.gitleaks.toml`. If a repo needs a
-# repo-specific allowlist (false-positive paths/regexes), add a
-# `--baseline-path=` or extend via a small per-repo overlay file —
-# discuss with the fleet owner before doing either.
-#
-# Rule set is the 93-rule variant lifted from `valory-xyz/trader`
-# (post-2025 gitleaks vocabulary, broader coverage than the older
-# 13-rule lineage in `open-autonomy` / `open-aea`). Trader-specific
-# allowlist entries (ui-build artifacts, etc.) were stripped — those
-# can come back into trader's repo as inline gitleaks `--baseline`
-# state or fold into this canonical if they turn out to be
-# fleet-relevant.
 #
 # Gitleaks rules are defined by regular expressions and entropy ranges.
 # Some secrets have unique signatures which make detecting those secrets easy.

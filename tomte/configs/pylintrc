@@ -1,35 +1,12 @@
-# Canonical pylintrc shipped by tomte.
-#
-# Repos consume this via:
-#   pylint --rcfile=$(python -c "from tomte.configs import PYLINTRC; print(PYLINTRC)") <paths>
-#
-# Pylint reads exactly one config file. This file is therefore the
-# *base* for the fleet — it ships pylint internals (disable codes,
-# design-knob thresholds, similarity settings). It deliberately does
-# NOT enumerate downstream library names: that would force a tomte
-# release every time a consumer repo adds a new transitive dep, which
-# is the wrong dependency direction.
-#
-# Per-repo extensions:
-#   * `ignored-modules` — declared per repo via
-#     `[tool.tomte.scaffold] extra_pylint_ignored_modules` in the
-#     consuming repo's pyproject.toml. The scaffolded `[testenv:pylint]`
-#     renders that into `--ignored-modules=…` on the pylint CLI, which
-#     layers on top of this rcfile (pylint merges CLI flags with rcfile
-#     values).
-#   * Repo-specific extra `disable=` codes — same mechanism, key
-#     `extra_pylint_disables`, rendered into `--disable=…`.
-#   * Per-file disables — file-level `# pylint: disable=…` as usual.
+# Canonical pylintrc base. Per-repo `ignored-modules` and per-repo
+# `disable=` extras are passed as CLI flags from each consumer's
+# `[testenv:pylint]`, not enumerated here.
 
 [MASTER]
 ignore-patterns=__main__.py,.*_pb2.py
 ignore=
 
 [MESSAGES CONTROL]
-# Fleet-internal disables. These are pylint-vocabulary codes (no
-# downstream library names), so they're safe to ship from tomte. Each
-# line documents *why* a code is disabled so the list stays curated
-# rather than accreting.
 #
 # C0103: invalid-name (test_x_runs_y conflicts; AEA naming has historical drift)
 # C0201: consider-iterating-dictionary

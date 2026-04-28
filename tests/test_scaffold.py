@@ -242,12 +242,7 @@ def test_scaffold_unknown_template_kind_errors(tmp_path):
 
 
 def test_scaffold_pylint_extras_default_to_no_flags(tmp_path):
-    """Without extra_pylint_* keys, pylint env carries no extension flags.
-
-    Regression guard for David's review on tomte#46: the scaffold's
-    pylint testenv must accept zero per-repo extras (empty default) —
-    not crash, not emit empty `--ignored-modules=` flags.
-    """
+    """Without extra_pylint_* keys, pylint env carries no extension flags."""
     _write_pyproject(tmp_path)
     runner = CliRunner()
     result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])

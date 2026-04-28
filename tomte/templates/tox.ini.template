@@ -95,21 +95,19 @@ commands = black --check {env:SERVICE_SPECIFIC_PACKAGES}
 skipsdist = True
 skip_install = True
 deps = tomte[isort]==$TOMTE_VERSION
+commands_pre =
+    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_packages = packages\nknown_local_folder = tests\n')"
 commands =
-    isort --gitignore \
-        --settings-path={envsitepackagesdir}/tomte/configs/isort.cfg \
-        --known-first-party=$KNOWN_FIRST_PARTY \
-        {env:SERVICE_SPECIFIC_PACKAGES}
+    isort --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:isort-check]
 skipsdist = True
 skip_install = True
 deps = tomte[isort]==$TOMTE_VERSION
+commands_pre =
+    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_packages = packages\nknown_local_folder = tests\n')"
 commands =
-    isort --check-only --gitignore \
-        --settings-path={envsitepackagesdir}/tomte/configs/isort.cfg \
-        --known-first-party=$KNOWN_FIRST_PARTY \
-        {env:SERVICE_SPECIFIC_PACKAGES}
+    isort --check-only --gitignore --settings-path={envtmpdir}/isort.cfg {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:flake8]
 skipsdist = True
@@ -120,14 +118,6 @@ commands =
         {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:mypy]
-; mypy reads exactly one config file but parses [mypy*] sections out of
-; any ini-format file. The env builds a merged config from the tomte
-; canonical + this repo's tox.ini, then points mypy at it. That way:
-;   * fleet defaults come from tomte (single source of truth)
-;   * repo-specific [mypy-foo.*] sections in this tox.ini layer on top
-;     (e.g. `[mypy-packages.valory.skills.abstract_round_abci.*]
-;     ignore_errors = True` for vendored skills the repo doesn't own)
-;   * no [tool.mypy] in pyproject.toml — pyproject stays PEP 621 only
 skipsdist = True
 skip_install = True
 deps =
@@ -139,13 +129,6 @@ commands =
     mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:pylint]
-; Per-repo pylint extensions go through two `[tool.tomte.scaffold]`
-; keys in the consuming repo's pyproject.toml: `extra_pylint_ignored_modules`
-; (third-party libs without pylint stubs — tomte deliberately doesn't
-; enumerate downstream library names) and `extra_pylint_disables`
-; (codes the repo wants to loosen further than the canonical rcfile).
-; The scaffolder renders each into a complete CLI flag below; an empty
-; key produces an empty string (no-op).
 skipsdist = True
 deps =
     {[deps-packages]deps}
@@ -156,12 +139,13 @@ commands =
         {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:darglint]
+; darglint has no --config-file flag; settings live in [darglint] at
+; the bottom of this tox.ini.
 skipsdist = True
 skip_install = True
 deps = tomte[darglint]==$TOMTE_VERSION
 commands =
-    darglint --config-file={envsitepackagesdir}/tomte/configs/darglint.cfg \
-        {env:SERVICE_SPECIFIC_PACKAGES}/*
+    darglint {env:SERVICE_SPECIFIC_PACKAGES}/*
 
 [testenv:safety]
 skipsdist = True

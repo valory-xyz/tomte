@@ -54,21 +54,19 @@ commands = black --check $LINT_TARGETS
 skipsdist = True
 skip_install = True
 deps = tomte[isort]==$TOMTE_VERSION
+commands_pre =
+    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_local_folder = tests\n')"
 commands =
-    isort --gitignore \
-        --settings-path={envsitepackagesdir}/tomte/configs/isort.cfg \
-        --known-first-party=$KNOWN_FIRST_PARTY \
-        $LINT_TARGETS
+    isort --gitignore --settings-path={envtmpdir}/isort.cfg $LINT_TARGETS
 
 [testenv:isort-check]
 skipsdist = True
 skip_install = True
 deps = tomte[isort]==$TOMTE_VERSION
+commands_pre =
+    python -c "from tomte.configs import ISORT_CFG; from pathlib import Path; Path(r'{envtmpdir}/isort.cfg').write_text(ISORT_CFG.read_text() + '\nknown_first_party = $KNOWN_FIRST_PARTY\nknown_local_folder = tests\n')"
 commands =
-    isort --check-only --gitignore \
-        --settings-path={envsitepackagesdir}/tomte/configs/isort.cfg \
-        --known-first-party=$KNOWN_FIRST_PARTY \
-        $LINT_TARGETS
+    isort --check-only --gitignore --settings-path={envtmpdir}/isort.cfg $LINT_TARGETS
 
 [testenv:flake8]
 skipsdist = True
@@ -79,8 +77,6 @@ commands =
         $LINT_TARGETS
 
 [testenv:mypy]
-; Same concat trick as the agent template — repo-specific [mypy-foo.*]
-; sections in this tox.ini layer onto the tomte canonical at runtime.
 skipsdist = True
 skip_install = True
 deps =
@@ -93,10 +89,6 @@ commands =
     mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs $LINT_TARGETS
 
 [testenv:pylint]
-; Per-repo pylint extensions: see the agent template for the rationale.
-; Same shape: `extra_pylint_ignored_modules` + `extra_pylint_disables`
-; in `[tool.tomte.scaffold]`, rendered by the scaffolder into complete
-; CLI flags (or empty strings).
 skipsdist = True
 deps =
     tomte[pylint]==$TOMTE_VERSION
@@ -106,12 +98,12 @@ commands =
         $LINT_TARGETS
 
 [testenv:darglint]
+; darglint has no --config-file flag; settings live in [darglint] at
+; the bottom of this tox.ini.
 skipsdist = True
 skip_install = True
 deps = tomte[darglint]==$TOMTE_VERSION
-commands =
-    darglint --config-file={envsitepackagesdir}/tomte/configs/darglint.cfg \
-        $LINT_TARGETS
+commands = darglint $LINT_TARGETS
 
 [testenv:safety]
 skipsdist = True
