@@ -34,40 +34,40 @@ setenv =
 [testenv:bandit]
 skipsdist = True
 skip_install = True
-deps = tomte[bandit]==$TOMTE_VERSION
+deps = tomte[bandit]$TOMTE_DEP_PIN
 commands =
     bandit -c {envsitepackagesdir}/tomte/configs/bandit.yaml -r $LINT_TARGETS
 
 [testenv:black]
 skipsdist = True
 skip_install = True
-deps = tomte[black]==$TOMTE_VERSION
+deps = tomte[black]$TOMTE_DEP_PIN
 commands = black $LINT_TARGETS
 
 [testenv:black-check]
 skipsdist = True
 skip_install = True
-deps = tomte[black]==$TOMTE_VERSION
+deps = tomte[black]$TOMTE_DEP_PIN
 commands = black --check $LINT_TARGETS
 
 [testenv:isort]
 skipsdist = True
 skip_install = True
-deps = tomte[isort,cli]==$TOMTE_VERSION
+deps = tomte[isort,cli]$TOMTE_DEP_PIN
 commands_pre = tomte render-isort-config --output={envtmpdir}/isort.cfg --known-first-party=$KNOWN_FIRST_PARTY --known-local-folder=tests
 commands = isort --gitignore --settings-path={envtmpdir}/isort.cfg $LINT_TARGETS
 
 [testenv:isort-check]
 skipsdist = True
 skip_install = True
-deps = tomte[isort,cli]==$TOMTE_VERSION
+deps = tomte[isort,cli]$TOMTE_DEP_PIN
 commands_pre = tomte render-isort-config --output={envtmpdir}/isort.cfg --known-first-party=$KNOWN_FIRST_PARTY --known-local-folder=tests
 commands = isort --check-only --gitignore --settings-path={envtmpdir}/isort.cfg $LINT_TARGETS
 
 [testenv:flake8]
 skipsdist = True
 skip_install = True
-deps = tomte[flake8]==$TOMTE_VERSION
+deps = tomte[flake8]$TOMTE_DEP_PIN
 commands =
     flake8 --config={envsitepackagesdir}/tomte/configs/flake8.cfg \
         $LINT_TARGETS
@@ -77,7 +77,7 @@ skipsdist = True
 skip_install = True
 deps =
     pip
-    tomte[mypy,cli]==$TOMTE_VERSION
+    tomte[mypy,cli]$TOMTE_DEP_PIN
 $EXTRA_DEPS
 commands_pre = tomte render-mypy-config --output={envtmpdir}/mypy.ini --append-from=tox.ini
 commands = mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs $LINT_TARGETS
@@ -85,7 +85,7 @@ commands = mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs $LINT
 [testenv:pylint]
 skipsdist = True
 deps =
-    tomte[pylint]==$TOMTE_VERSION
+    tomte[pylint]$TOMTE_DEP_PIN
 $EXTRA_DEPS
 commands =
     pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc $EXTRA_PYLINT_FLAGS \
@@ -96,20 +96,20 @@ commands =
 ; the bottom of this tox.ini.
 skipsdist = True
 skip_install = True
-deps = tomte[darglint]==$TOMTE_VERSION
+deps = tomte[darglint]$TOMTE_DEP_PIN
 commands = darglint $LINT_TARGETS
 
 [testenv:safety]
 skipsdist = True
 skip_install = True
-deps = tomte[safety]==$TOMTE_VERSION
+deps = tomte[safety]$TOMTE_DEP_PIN
 commands =
     safety check --policy-file {envsitepackagesdir}/tomte/configs/safety-policy.yml
 
 [testenv:vulture]
 skipsdist = True
 skip_install = True
-deps = tomte[vulture]==$TOMTE_VERSION
+deps = tomte[vulture]$TOMTE_DEP_PIN
 commands = vulture $LINT_TARGETS scripts/whitelist.py
 
 [testenv:liccheck]
@@ -117,12 +117,23 @@ skipsdist = True
 usedevelop = True
 deps =
     pip
-    tomte[liccheck,cli]==$TOMTE_VERSION
+    tomte[liccheck,cli]$TOMTE_DEP_PIN
 commands =
     tomte freeze-dependencies --output-path {envtmpdir}/requirements.txt
     liccheck -s tox.ini -r {envtmpdir}/requirements.txt -l PARANOID
 
 $EXTRA_TESTENVS
+
+; -- darglint: fleet-uniform settings (darglint has no --config-file flag) ---
+
+[darglint]
+docstring_style = sphinx
+strictness = short
+ignore_regex = async_act|.*_pb2\.py
+ignore = DAR401
+
+; -- repo-specific mypy overrides (rendered from [tomte-scaffold]) -----------
+$EXTRA_MYPY_OVERRIDES
 
 ; -- liccheck config (liccheck has no pyproject.toml support) ------------
 

@@ -24,72 +24,80 @@ import re
 import textwrap
 from pathlib import Path
 
-import click
-import pytest
 from click.testing import CliRunner
 
 from tomte.scaffold import GENERATED_MARKER, scaffold
 
 
-_MINIMAL_PYPROJECT = textwrap.dedent(
+_AGENT_TOX = textwrap.dedent(
     """
-    [project]
-    name = "smoke"
-    version = "0.0.0"
-
-    [tool.tomte.scaffold]
-    open_autonomy_version = "0.21.19"
-    open_aea_version = "2.2.1"
-    packages_paths = "packages/valory"
-    service_specific_packages = "packages/valory/skills/foo"
-    pytest_targets = "packages/valory/skills/foo/tests"
-    service_public_id = "valory/foo"
-    known_first_party = "autonomy"
+    [tomte-scaffold]
+    open_autonomy_version = 0.21.19
+    open_aea_version = 2.2.1
+    packages_paths = packages/valory
+    service_specific_packages = packages/valory/skills/foo
+    pytest_targets = packages/valory/skills/foo/tests
+    service_public_id = valory/foo
+    known_first_party = autonomy
     """
-).strip()
+).lstrip()
+
+_LIBRARY_TOX = textwrap.dedent(
+    """
+    [tomte-scaffold]
+    template_kind = library
+    lint_targets = mech_client/
+    known_first_party = mech_client
+    """
+).lstrip()
 
 
-def _write_pyproject(repo_root: Path, body: str = _MINIMAL_PYPROJECT) -> None:
-    (repo_root / "pyproject.toml").write_text(body, encoding="utf-8")
+def _write_tox_ini(repo_root: Path, body: str = _AGENT_TOX) -> None:
+    (repo_root / "tox.ini").write_text(body, encoding="utf-8")
+
+
+def _placeholders_outside_comments(rendered: str) -> list:
+    body = "\n".join(
+        line for line in rendered.splitlines() if not line.lstrip().startswith(";")
+    )
+    return re.findall(r"\$[A-Z_][A-Z_0-9]*", body)
 
 
 def test_scaffold_dry_run_emits_generated_marker(tmp_path):
     """`tomte scaffold tox --dry-run` writes nothing and prints a rendered tox.ini."""
-    _write_pyproject(tmp_path)
+    _write_tox_ini(tmp_path)
     runner = CliRunner()
     result = runner.invoke(
         scaffold, ["tox", "--repo-root", str(tmp_path), "--dry-run"]
     )
     assert result.exit_code == 0, result.output
     assert result.output.startswith(GENERATED_MARKER)
-    assert not (tmp_path / "tox.ini").exists(), "dry-run must not write the file"
+    # dry-run should NOT have overwritten the input
+    assert "[tomte-scaffold]" in (tmp_path / "tox.ini").read_text(encoding="utf-8")
+    assert "[testenv:bandit]" not in (tmp_path / "tox.ini").read_text(encoding="utf-8")
 
 
 def test_scaffold_writes_file_and_resolves_all_placeholders(tmp_path):
     """A real scaffold writes tox.ini with no unresolved $VAR placeholders."""
-    _write_pyproject(tmp_path)
+    _write_tox_ini(tmp_path)
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    # Force needed because the input tox.ini doesn't yet carry the marker.
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code == 0, result.output
 
     rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
     assert rendered.startswith(GENERATED_MARKER), "missing canonical marker line"
-
-    # The rendered file may contain literal $VAR strings inside the doc-comment
-    # block (those use $$VAR in the template and survive verbatim) but must NOT
-    # contain any unresolved placeholder OUTSIDE the comment block.
-    body = "\n".join(
-        line for line in rendered.splitlines() if not line.lstrip().startswith(";")
-    )
-    unresolved = re.findall(r"\$[A-Z_][A-Z_0-9]*", body)
-    assert not unresolved, f"unresolved placeholders in rendered tox.ini: {unresolved}"
+    # The [tomte-scaffold] section must survive
+    assert "[tomte-scaffold]" in rendered
+    assert "service_public_id = valory/foo" in rendered
+    assert _placeholders_outside_comments(rendered) == []
 
 
 def test_scaffold_refuses_overwriting_handwritten_tox_ini(tmp_path):
     """Without --force, scaffold refuses to clobber a non-canonical tox.ini."""
-    _write_pyproject(tmp_path)
-    (tmp_path / "tox.ini").write_text("[tox]\nenvlist = py310\n", encoding="utf-8")
-
+    (tmp_path / "tox.ini").write_text(
+        _AGENT_TOX + "\n[tox]\nenvlist = py310\n", encoding="utf-8"
+    )
     runner = CliRunner()
     result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
     assert result.exit_code != 0
@@ -98,123 +106,83 @@ def test_scaffold_refuses_overwriting_handwritten_tox_ini(tmp_path):
 
 def test_scaffold_overwrites_previous_scaffold_without_force(tmp_path):
     """A previously-generated scaffold (carries the marker) is safe to overwrite."""
-    _write_pyproject(tmp_path)
+    _write_tox_ini(tmp_path)
     runner = CliRunner()
-    first = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    first = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert first.exit_code == 0
+    # Second invocation: no --force; allowed because tox.ini now has the marker.
     second = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
     assert second.exit_code == 0, second.output
 
 
 def test_scaffold_errors_on_missing_required_key(tmp_path):
     """Missing required keys produce a useful UsageError, not a placeholder leak."""
-    _write_pyproject(
+    _write_tox_ini(
         tmp_path,
         textwrap.dedent(
             """
-            [project]
-            name = "smoke"
-            version = "0.0.0"
-
-            [tool.tomte.scaffold]
-            open_autonomy_version = "0.21.19"
-            open_aea_version = "2.2.1"
-            packages_paths = "packages/valory"
-            # service_specific_packages, pytest_targets, service_public_id,
-            # known_first_party intentionally omitted
+            [tomte-scaffold]
+            open_autonomy_version = 0.21.19
+            open_aea_version = 2.2.1
+            packages_paths = packages/valory
             """
-        ).strip(),
+        ).lstrip(),
     )
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code != 0
     assert "missing required keys" in result.output
     assert "service_specific_packages" in result.output
 
 
-def test_scaffold_errors_when_no_scaffold_block(tmp_path):
-    """An empty [tool.tomte.scaffold] block yields a clear error."""
-    _write_pyproject(
-        tmp_path,
-        textwrap.dedent(
-            """
-            [project]
-            name = "smoke"
-            version = "0.0.0"
-            """
-        ).strip(),
-    )
+def test_scaffold_errors_when_no_scaffold_section(tmp_path):
+    """A tox.ini with no `[tomte-scaffold]` section yields a clear error."""
+    (tmp_path / "tox.ini").write_text("[tox]\nenvlist = py310\n", encoding="utf-8")
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
+    assert result.exit_code != 0
+    assert "[tomte-scaffold]" in result.output
+
+
+def test_scaffold_errors_when_no_tox_ini(tmp_path):
+    """Missing tox.ini error directs the user to bootstrap a stub."""
     runner = CliRunner()
     result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
     assert result.exit_code != 0
-    assert "[tool.tomte.scaffold]" in result.output
-
-
-_LIBRARY_PYPROJECT = textwrap.dedent(
-    """
-    [project]
-    name = "lib-smoke"
-    version = "0.0.0"
-
-    [tool.tomte.scaffold]
-    template_kind = "library"
-    lint_targets = "mech_client/"
-    known_first_party = "mech_client"
-    """
-).strip()
+    assert "stub tox.ini" in result.output
 
 
 def test_scaffold_library_mode_renders(tmp_path):
     """`template_kind = "library"` renders the library template, not the agent one."""
-    _write_pyproject(tmp_path, _LIBRARY_PYPROJECT)
+    _write_tox_ini(tmp_path, _LIBRARY_TOX)
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code == 0, result.output
 
     rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
     assert rendered.startswith(GENERATED_MARKER)
-    # Library template MUST NOT carry agent-shaped concepts:
-    assert "SERVICE_SPECIFIC_PACKAGES" not in rendered, (
-        "library template leaked agent-only var SERVICE_SPECIFIC_PACKAGES"
-    )
-    assert "autonomy init" not in rendered, (
-        "library template leaked autonomy bootstrap"
-    )
-    assert "py{3.10,3.11,3.12,3.13,3.14}" not in rendered, (
-        "library template leaked agent factor matrix"
-    )
-    assert "[testenv:check-hash]" not in rendered, (
-        "library template leaked agent autonomy-check env"
-    )
-    # Library template MUST carry the lint-target substitution:
+    assert "SERVICE_SPECIFIC_PACKAGES" not in rendered
+    assert "autonomy init" not in rendered
+    assert "py{3.10,3.11,3.12,3.13,3.14}" not in rendered
+    assert "[testenv:check-hash]" not in rendered
     assert "mech_client/" in rendered
-    # Body has no unresolved placeholders outside the comment block.
-    body = "\n".join(
-        line for line in rendered.splitlines() if not line.lstrip().startswith(";")
-    )
-    import re
-    unresolved = re.findall(r"\$[A-Z_][A-Z_0-9]*", body)
-    assert not unresolved, f"unresolved placeholders: {unresolved}"
+    assert _placeholders_outside_comments(rendered) == []
 
 
 def test_scaffold_library_mode_missing_lint_targets_errors(tmp_path):
     """Library mode requires `lint_targets`; missing it should error clearly."""
-    _write_pyproject(
+    _write_tox_ini(
         tmp_path,
         textwrap.dedent(
             """
-            [project]
-            name = "lib-smoke"
-            version = "0.0.0"
-
-            [tool.tomte.scaffold]
-            template_kind = "library"
-            known_first_party = "mech_client"
+            [tomte-scaffold]
+            template_kind = library
+            known_first_party = mech_client
             """
-        ).strip(),
+        ).lstrip(),
     )
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code != 0
     assert "lint_targets" in result.output
     assert "template_kind='library'" in result.output
@@ -222,110 +190,128 @@ def test_scaffold_library_mode_missing_lint_targets_errors(tmp_path):
 
 def test_scaffold_unknown_template_kind_errors(tmp_path):
     """An invalid `template_kind` value is rejected up-front."""
-    _write_pyproject(
+    _write_tox_ini(
         tmp_path,
         textwrap.dedent(
             """
-            [project]
-            name = "smoke"
-            version = "0.0.0"
-
-            [tool.tomte.scaffold]
-            template_kind = "framework"
+            [tomte-scaffold]
+            template_kind = framework
             """
-        ).strip(),
+        ).lstrip(),
     )
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code != 0
     assert "template_kind" in result.output
 
 
 def test_scaffold_pylint_extras_default_to_no_flags(tmp_path):
     """Without extra_pylint_* keys, pylint env carries no extension flags."""
-    _write_pyproject(tmp_path)
+    _write_tox_ini(tmp_path)
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code == 0, result.output
 
     rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
-    # Find the [testenv:pylint] block and check it does NOT contain
-    # an `--ignored-modules=` flag (empty default → empty placeholder).
     pylint_block = _extract_section(rendered, "[testenv:pylint]")
-    assert "--ignored-modules=" not in pylint_block, (
-        "empty default should NOT render an --ignored-modules= flag; "
-        f"got block:\n{pylint_block}"
-    )
-    assert "--disable=" not in pylint_block, (
-        "empty default should NOT render a --disable= flag; "
-        f"got block:\n{pylint_block}"
-    )
+    assert "--ignored-modules=" not in pylint_block, pylint_block
+    assert "--disable=" not in pylint_block, pylint_block
 
 
 def test_scaffold_pylint_extras_render_into_cli_flags(tmp_path):
     """When extra_pylint_* keys are set, they appear as full CLI flags."""
-    _write_pyproject(
+    _write_tox_ini(
         tmp_path,
         textwrap.dedent(
             """
-            [project]
-            name = "smoke"
-            version = "0.0.0"
-
-            [tool.tomte.scaffold]
-            open_autonomy_version = "0.21.19"
-            open_aea_version = "2.2.1"
-            packages_paths = "packages/valory"
-            service_specific_packages = "packages/valory/skills/foo"
-            pytest_targets = "packages/valory/skills/foo/tests"
-            service_public_id = "valory/foo"
-            known_first_party = "autonomy"
-            extra_pylint_ignored_modules = "web3,pandas,numpy"
-            extra_pylint_disables = "C0111,R0902"
+            [tomte-scaffold]
+            open_autonomy_version = 0.21.19
+            open_aea_version = 2.2.1
+            packages_paths = packages/valory
+            service_specific_packages = packages/valory/skills/foo
+            pytest_targets = packages/valory/skills/foo/tests
+            service_public_id = valory/foo
+            known_first_party = autonomy
+            extra_pylint_ignored_modules = web3,pandas,numpy
+            extra_pylint_disables = C0111,R0902
             """
-        ).strip(),
+        ).lstrip(),
     )
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code == 0, result.output
-
-    rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
-    pylint_block = _extract_section(rendered, "[testenv:pylint]")
-    assert "--ignored-modules=web3,pandas,numpy" in pylint_block, pylint_block
-    assert "--disable=C0111,R0902" in pylint_block, pylint_block
+    pylint_block = _extract_section((tmp_path / "tox.ini").read_text(), "[testenv:pylint]")
+    assert "--ignored-modules=web3,pandas,numpy" in pylint_block
+    assert "--disable=C0111,R0902" in pylint_block
 
 
-def test_scaffold_library_pylint_extras_render(tmp_path):
-    """Library template renders the same pylint extension flags."""
-    _write_pyproject(
+def test_scaffold_tomte_dep_pin_default_is_pypi_version(tmp_path):
+    """tomte_dep_pin defaults to `==<tomte_version>` (PyPI form)."""
+    _write_tox_ini(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
+    assert result.exit_code == 0, result.output
+    rendered = (tmp_path / "tox.ini").read_text()
+    assert "tomte[bandit]==" in rendered, "default pin should be PyPI ==X.Y.Z form"
+
+
+def test_scaffold_tomte_dep_pin_overridable(tmp_path):
+    """When tomte_dep_pin is overridden (e.g. git URL), the override takes effect."""
+    _write_tox_ini(
         tmp_path,
         textwrap.dedent(
             """
-            [project]
-            name = "lib-smoke"
-            version = "0.0.0"
-
-            [tool.tomte.scaffold]
-            template_kind = "library"
-            lint_targets = "mech_client/"
-            known_first_party = "mech_client"
-            extra_pylint_ignored_modules = "web3,solders"
-            extra_pylint_disables = "C0123"
+            [tomte-scaffold]
+            open_autonomy_version = 0.21.19
+            open_aea_version = 2.2.1
+            packages_paths = packages/valory
+            service_specific_packages = packages/valory/skills/foo
+            pytest_targets = packages/valory/skills/foo/tests
+            service_public_id = valory/foo
+            known_first_party = autonomy
+            tomte_dep_pin = @ git+https://github.com/valory-xyz/tomte.git@deadbeef
             """
-        ).strip(),
+        ).lstrip(),
     )
     runner = CliRunner()
-    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
     assert result.exit_code == 0, result.output
+    rendered = (tmp_path / "tox.ini").read_text()
+    assert "tomte[bandit]@ git+https://github.com/valory-xyz/tomte.git@deadbeef" in rendered
 
-    rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
-    pylint_block = _extract_section(rendered, "[testenv:pylint]")
-    assert "--ignored-modules=web3,solders" in pylint_block, pylint_block
-    assert "--disable=C0123" in pylint_block, pylint_block
+
+def test_scaffold_extra_mypy_overrides_appended(tmp_path):
+    """`extra_mypy_overrides` (multi-line ini text) appears verbatim at the bottom."""
+    _write_tox_ini(
+        tmp_path,
+        textwrap.dedent(
+            """
+            [tomte-scaffold]
+            open_autonomy_version = 0.21.19
+            open_aea_version = 2.2.1
+            packages_paths = packages/valory
+            service_specific_packages = packages/valory/skills/foo
+            pytest_targets = packages/valory/skills/foo/tests
+            service_public_id = valory/foo
+            known_first_party = autonomy
+            extra_mypy_overrides =
+                [mypy-pandas.*]
+                ignore_missing_imports = True
+
+                [mypy-numpy.*]
+                ignore_missing_imports = True
+            """
+        ).lstrip(),
+    )
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path), "--force"])
+    assert result.exit_code == 0, result.output
+    rendered = (tmp_path / "tox.ini").read_text()
+    assert "[mypy-pandas.*]" in rendered
+    assert "[mypy-numpy.*]" in rendered
 
 
 def _extract_section(text: str, header: str) -> str:
-    """Return the lines of `text` from `header` up to the next [section] line."""
     out = []
     in_section = False
     for line in text.splitlines():
