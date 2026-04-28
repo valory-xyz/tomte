@@ -96,6 +96,27 @@ def test_mypy_ini_has_base_only_no_third_party_overrides():
     )
 
 
+def test_isort_canonical_carries_no_per_repo_packaging_facts():
+    """Isort canonical must not encode per-repo packaging identity.
+
+    Regression guard for David's review on tomte#46: tomte ships a base
+    (profile, line length, sort order) and does NOT enumerate per-repo
+    `known_first_party` / `known_packages` / `known_local_folder` —
+    those are facts about the *consuming* repo's package layout, not
+    tomte's business. Each consumer concat-tricks them on top.
+    """
+    parser = configparser.ConfigParser()
+    parser.read(configs.ISORT_CFG)
+    assert parser.has_section("settings"), "missing [settings] base"
+    settings = parser["settings"]
+    for key in ("known_first_party", "known_packages", "known_local_folder"):
+        assert key not in settings, (
+            f"isort.cfg must not enumerate per-repo `{key}` — that's "
+            "downstream packaging identity, the consuming repo provides "
+            "it via the tox env's `commands_pre` concat-trick."
+        )
+
+
 def test_safety_policy_is_yaml_shaped():
     """Canonical safety policy must parse as YAML and have the expected keys."""
     text = configs.SAFETY_POLICY.read_text(encoding="utf-8")
