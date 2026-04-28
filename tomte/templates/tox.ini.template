@@ -320,6 +320,14 @@ authorized_licenses:
     LGPLv2.1+
     GNU Lesser General Public License v2 or later (LGPLv2+)
     GNU General Public License v2 or later (GPLv2+)
+    ; Compound licenses (PEP 639 / SPDX dual-license expressions) — every
+    ; component below is permissive, so the conjunction is permissive too.
+    Apache-2.0 AND MIT
+    Apache-2.0 AND BSD-2-Clause
+    Apache-2.0 AND CNRI-Python
+    MPL-2.0 AND MIT
+    BSD-2-Clause or Apache-2.0
+    BSD or Apache License, Version 2.0
 
 unauthorized_licenses:
     MPL 1.1
