@@ -45,36 +45,54 @@ def test_resource_path_exists(name, path):
     assert path.stat().st_size > 0, f"{name} -> {path} is empty"
 
 
-def test_pylintrc_has_disable_and_ignored_modules():
-    """Canonical pylintrc must carry both fleet-union lists."""
+def test_pylintrc_carries_pylint_internals_only():
+    """Pylintrc ships pylint-vocabulary codes but NO downstream library names.
+
+    Regression guard for David's review on tomte#46: tomte must not enumerate
+    downstream library names in `ignored-modules` — that creates the wrong
+    dependency direction (a new dep in mech-predict would force a tomte
+    release). Per-repo additions go through `[tool.tomte.scaffold]
+    extra_pylint_ignored_modules` and are rendered into `--ignored-modules=`
+    on the pylint testenv command.
+    """
     parser = configparser.ConfigParser()
     parser.read(configs.PYLINTRC)
     assert parser.has_section("MESSAGES CONTROL"), "missing [MESSAGES CONTROL]"
     disable = parser["MESSAGES CONTROL"].get("disable", "")
-    assert "C0103" in disable and "W1203" in disable, "fleet-union disable codes missing"
-    assert parser.has_section("IMPORTS"), "missing [IMPORTS]"
-    ignored = parser["IMPORTS"].get("ignored-modules", "")
-    # Representative modules sampled from the fleet survey (web3 in OAEA,
-    # pandas/numpy in mech-* + OA, flask in OA, anthropic in mech-*).
-    for module in ("web3", "pandas", "numpy", "flask", "anthropic"):
-        assert module in ignored, f"{module} missing from pylintrc ignored-modules"
+    assert "C0103" in disable and "W1203" in disable, (
+        "pylint-internal disable codes missing"
+    )
+    if parser.has_section("IMPORTS"):
+        ignored = parser["IMPORTS"].get("ignored-modules", "")
+        assert not ignored.strip(), (
+            f"pylintrc must not list downstream library names in [IMPORTS] "
+            f"ignored-modules; found: {ignored!r}. Per-repo extras come "
+            f"through [tool.tomte.scaffold] extra_pylint_ignored_modules."
+        )
 
 
-def test_mypy_ini_has_base_strictness_and_module_overrides():
-    """Canonical mypy.ini must carry strictness + at least one [mypy-*] override."""
+def test_mypy_ini_has_base_only_no_third_party_overrides():
+    """Mypy canonical ships base strictness + protobuf exclude — no library names.
+
+    Regression guard for David's review on tomte#46: per-repo
+    `[mypy-<libname>]` blocks live in the consuming repo's tox.ini and
+    layer on via the `[testenv:mypy]` concat trick — not here.
+    """
     parser = configparser.ConfigParser()
     parser.read(configs.MYPY_INI)
     assert parser.has_section("mypy"), "missing [mypy] base"
     assert parser["mypy"].get("strict_optional") == "True"
     assert parser["mypy"].get("disallow_untyped_defs") == "True"
-    # exclude regex must catch protobuf and custom_types
     exclude = parser["mypy"].get("exclude", "")
     assert "_pb2" in exclude and "custom_types" in exclude, (
         "exclude regex missing protobuf / custom_types pattern"
     )
-    # At least one [mypy-foo.*] section exists
     mypy_module_sections = [s for s in parser.sections() if s.startswith("mypy-")]
-    assert mypy_module_sections, "no [mypy-foo.*] override sections present"
+    assert not mypy_module_sections, (
+        f"mypy.ini must not list downstream libraries; found: "
+        f"{mypy_module_sections!r}. Per-repo overrides go in the "
+        f"consuming repo's tox.ini."
+    )
 
 
 def test_safety_policy_is_yaml_shaped():

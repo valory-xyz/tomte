@@ -18,6 +18,9 @@
 ;   $$EXTRA_DEPS_PACKAGES           multi-line; appended to [deps-packages]
 ;   $$EXTRA_TESTENVS                multi-line; appended after the canonical envs
 ;   $$UPSTREAM_PINS                 multi-line --upstream args for check-third-party-hashes
+;   $$EXTRA_PYLINT_FLAGS            pre-rendered pylint extension CLI flags
+;                                   (e.g. "--ignored-modules=web3 --disable=C0111"),
+;                                   or empty when no extras declared
 
 [tox]
 envlist = bandit, safety, black, black-check, isort, isort-check, check-hash, check-packages, check-dependencies, flake8, mypy, pylint, darglint, check-abciapp-specs, check-abci-docstrings, check-handlers, check-generate-all-protocols, py{3.10,3.11,3.12,3.13,3.14}-{linux,darwin,win}
@@ -136,13 +139,20 @@ commands =
     mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:pylint]
+; Per-repo pylint extensions go through two `[tool.tomte.scaffold]`
+; keys in the consuming repo's pyproject.toml: `extra_pylint_ignored_modules`
+; (third-party libs without pylint stubs — tomte deliberately doesn't
+; enumerate downstream library names) and `extra_pylint_disables`
+; (codes the repo wants to loosen further than the canonical rcfile).
+; The scaffolder renders each into a complete CLI flag below; an empty
+; key produces an empty string (no-op).
 skipsdist = True
 deps =
     {[deps-packages]deps}
     tomte[pylint]==$TOMTE_VERSION
 commands =
     pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc \
-        --ignore-paths="^packages/valory/.*$$" \
+        --ignore-paths="^packages/valory/.*$$" $EXTRA_PYLINT_FLAGS \
         {env:SERVICE_SPECIFIC_PACKAGES}
 
 [testenv:darglint]

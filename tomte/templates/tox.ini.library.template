@@ -15,6 +15,9 @@
 ;   $$KNOWN_FIRST_PARTY             isort known_first_party
 ;   $$EXTRA_DEPS                    multi-line dep list (library-specific)
 ;   $$EXTRA_TESTENVS                multi-line; appended to file end
+;   $$EXTRA_PYLINT_FLAGS            pre-rendered pylint extension CLI flags
+;                                   (e.g. "--ignored-modules=web3 --disable=C0111"),
+;                                   or empty when no extras declared
 
 [tox]
 envlist = bandit, safety, black, black-check, isort, isort-check, flake8, mypy, pylint, darglint, vulture, liccheck
@@ -90,12 +93,16 @@ commands =
     mypy --config-file={envtmpdir}/mypy.ini --disallow-untyped-defs $LINT_TARGETS
 
 [testenv:pylint]
+; Per-repo pylint extensions: see the agent template for the rationale.
+; Same shape: `extra_pylint_ignored_modules` + `extra_pylint_disables`
+; in `[tool.tomte.scaffold]`, rendered by the scaffolder into complete
+; CLI flags (or empty strings).
 skipsdist = True
 deps =
     tomte[pylint]==$TOMTE_VERSION
 $EXTRA_DEPS
 commands =
-    pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc \
+    pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc $EXTRA_PYLINT_FLAGS \
         $LINT_TARGETS
 
 [testenv:darglint]

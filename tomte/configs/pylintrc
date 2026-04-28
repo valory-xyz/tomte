@@ -1,27 +1,35 @@
 # Canonical pylintrc shipped by tomte.
 #
 # Repos consume this via:
-#   pylint --rcfile=$(python -c "import tomte.configs as c; print(c.pylintrc())") <paths>
+#   pylint --rcfile=$(python -c "from tomte.configs import PYLINTRC; print(PYLINTRC)") <paths>
 #
-# Pylint reads exactly one config file. The lists below are the *fleet
-# union* across open-autonomy / open-aea / mech / mech-predict /
-# mech-interact / mech-agents-fun / mech-server / IEKit / optimus /
-# trader / meme-ooorr surveyed 2026-04. Carrying the union (rather than
-# the intersection) means downstream repos don't need a local
-# .pylintrc — pylint silently skips modules it can't resolve and the
-# disable codes that don't match a finding are no-ops. Bumping a
-# threshold or adding a check is therefore a single edit here, picked
-# up via tomte version pin.
+# Pylint reads exactly one config file. This file is therefore the
+# *base* for the fleet — it ships pylint internals (disable codes,
+# design-knob thresholds, similarity settings). It deliberately does
+# NOT enumerate downstream library names: that would force a tomte
+# release every time a consumer repo adds a new transitive dep, which
+# is the wrong dependency direction.
+#
+# Per-repo extensions:
+#   * `ignored-modules` — declared per repo via
+#     `[tool.tomte.scaffold] extra_pylint_ignored_modules` in the
+#     consuming repo's pyproject.toml. The scaffolded `[testenv:pylint]`
+#     renders that into `--ignored-modules=…` on the pylint CLI, which
+#     layers on top of this rcfile (pylint merges CLI flags with rcfile
+#     values).
+#   * Repo-specific extra `disable=` codes — same mechanism, key
+#     `extra_pylint_disables`, rendered into `--disable=…`.
+#   * Per-file disables — file-level `# pylint: disable=…` as usual.
 
 [MASTER]
 ignore-patterns=__main__.py,.*_pb2.py
 ignore=
 
 [MESSAGES CONTROL]
-# Fleet union of disables across the surveyed repos. Adding a code here
-# loosens pylint everywhere; do not extend casually. Each line below
-# documents *why* a code is disabled so the list stays curated rather
-# than accreting.
+# Fleet-internal disables. These are pylint-vocabulary codes (no
+# downstream library names), so they're safe to ship from tomte. Each
+# line documents *why* a code is disabled so the list stays curated
+# rather than accreting.
 #
 # C0103: invalid-name (test_x_runs_y conflicts; AEA naming has historical drift)
 # C0201: consider-iterating-dictionary
@@ -56,30 +64,22 @@ ignore=
 # W1514: unspecified-encoding
 disable=C0103,C0201,C0204,C0206,C0209,C0301,C0302,E0611,E1136,R0402,R0801,R0901,R0904,R0912,R0913,R0917,R1710,R1714,R1729,R1732,R1733,R1734,R1735,W0105,W0237,W0511,W0640,W0707,W1202,W1203,W1514
 
-[IMPORTS]
-# Fleet union of `ignored-modules` across the surveyed repos. Pylint
-# only "ignores" a module here when it tries to resolve attributes on
-# it during type inference — so over-listing is harmless: an entry that
-# doesn't match anything in a given repo is a no-op. Adding a new
-# transitive dep that lacks pylint stubs? Bump tomte and add it here,
-# rather than per-repo.
-ignored-modules=aea_cli_ipfs,aea_test_autonomy,aiohttp,aioprometheus,anchorpy,anthropic,asn1crypto,autonomy,bech32,certifi,click,compose,cosmpy,coverage,Crypto,cryptography.fernet,defusedxml,docker,dotenv,ecdsa,eth_account,eth_keys,eth_typing,fetch,flask,gitpython,google,gql,hexbytes,hypothesis,ipfshttpclient,lru,matplotlib,memory_profiler,moviepy,multidict,numpy,oef,openai,openapi_core,openapi_spec_validator,packaging,pandas,pebble,prometheus_client,protobuf,psutil,pyaes,pylint,pytest,requests,signal,skimage,solana,solders,statsmodels,temper,tensorflow,tiktoken,toml,watchdog,wave,web3,werkzeug,yoti_python_sdk,_pytest
-
 [DESIGN]
-# Fleet-union (most permissive across OA, OAEA, mech, mech-*, trader,
-# IEKit, optimus). Pylint's [DESIGN] thresholds flag classes/functions
-# above the limit; carrying the union means no repo is stricter than
-# its own current rcfile, so adopting this canonical never tightens.
+# Most-permissive thresholds across the agent-fleet repos. Pylint's
+# [DESIGN] knobs flag classes/functions above the limit; carrying the
+# loose end means adopting this canonical never tightens any repo.
+# Repos that want stricter limits override locally (file-level
+# `# pylint: disable=` or their own [tool.pylint.design] section).
 min-public-methods=1
-max-public-methods=58       ; OA
-max-args=27                 ; OAEA — accommodates wide skill constructors
-max-locals=31               ; OAEA
-max-statements=80           ; OAEA
-max-parents=11              ; OAEA
-max-attributes=38           ; OAEA
-max-branches=36             ; OA — accommodates large match/case skills
-max-returns=10              ; OA / OAEA
-max-bool-expr=7             ; OAEA
+max-public-methods=58
+max-args=27
+max-locals=31
+max-statements=80
+max-parents=11
+max-attributes=38
+max-branches=36
+max-returns=10
+max-bool-expr=7
 
 [REFACTORING]
 max-nested-blocks=6

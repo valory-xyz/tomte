@@ -239,3 +239,107 @@ def test_scaffold_unknown_template_kind_errors(tmp_path):
     result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
     assert result.exit_code != 0
     assert "template_kind" in result.output
+
+
+def test_scaffold_pylint_extras_default_to_no_flags(tmp_path):
+    """Without extra_pylint_* keys, pylint env carries no extension flags.
+
+    Regression guard for David's review on tomte#46: the scaffold's
+    pylint testenv must accept zero per-repo extras (empty default) —
+    not crash, not emit empty `--ignored-modules=` flags.
+    """
+    _write_pyproject(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+
+    rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
+    # Find the [testenv:pylint] block and check it does NOT contain
+    # an `--ignored-modules=` flag (empty default → empty placeholder).
+    pylint_block = _extract_section(rendered, "[testenv:pylint]")
+    assert "--ignored-modules=" not in pylint_block, (
+        "empty default should NOT render an --ignored-modules= flag; "
+        f"got block:\n{pylint_block}"
+    )
+    assert "--disable=" not in pylint_block, (
+        "empty default should NOT render a --disable= flag; "
+        f"got block:\n{pylint_block}"
+    )
+
+
+def test_scaffold_pylint_extras_render_into_cli_flags(tmp_path):
+    """When extra_pylint_* keys are set, they appear as full CLI flags."""
+    _write_pyproject(
+        tmp_path,
+        textwrap.dedent(
+            """
+            [project]
+            name = "smoke"
+            version = "0.0.0"
+
+            [tool.tomte.scaffold]
+            open_autonomy_version = "0.21.19"
+            open_aea_version = "2.2.1"
+            packages_paths = "packages/valory"
+            service_specific_packages = "packages/valory/skills/foo"
+            pytest_targets = "packages/valory/skills/foo/tests"
+            service_public_id = "valory/foo"
+            known_first_party = "autonomy"
+            extra_pylint_ignored_modules = "web3,pandas,numpy"
+            extra_pylint_disables = "C0111,R0902"
+            """
+        ).strip(),
+    )
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+
+    rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
+    pylint_block = _extract_section(rendered, "[testenv:pylint]")
+    assert "--ignored-modules=web3,pandas,numpy" in pylint_block, pylint_block
+    assert "--disable=C0111,R0902" in pylint_block, pylint_block
+
+
+def test_scaffold_library_pylint_extras_render(tmp_path):
+    """Library template renders the same pylint extension flags."""
+    _write_pyproject(
+        tmp_path,
+        textwrap.dedent(
+            """
+            [project]
+            name = "lib-smoke"
+            version = "0.0.0"
+
+            [tool.tomte.scaffold]
+            template_kind = "library"
+            lint_targets = "mech_client/"
+            known_first_party = "mech_client"
+            extra_pylint_ignored_modules = "web3,solders"
+            extra_pylint_disables = "C0123"
+            """
+        ).strip(),
+    )
+    runner = CliRunner()
+    result = runner.invoke(scaffold, ["tox", "--repo-root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+
+    rendered = (tmp_path / "tox.ini").read_text(encoding="utf-8")
+    pylint_block = _extract_section(rendered, "[testenv:pylint]")
+    assert "--ignored-modules=web3,solders" in pylint_block, pylint_block
+    assert "--disable=C0123" in pylint_block, pylint_block
+
+
+def _extract_section(text: str, header: str) -> str:
+    """Return the lines of `text` from `header` up to the next [section] line."""
+    out = []
+    in_section = False
+    for line in text.splitlines():
+        if line.strip() == header:
+            in_section = True
+            out.append(line)
+            continue
+        if in_section and line.startswith("[") and line.strip() != header:
+            break
+        if in_section:
+            out.append(line)
+    return "\n".join(out)
