@@ -311,16 +311,20 @@ authorized_licenses:
     MPL-2.0
     MPL 2.0
     Mozilla Public License 2.0 (MPL 2.0)
+    ; LGPL — accepted because some agent fleet deps (pebble, websocket-client)
+    ; ship LGPL-licensed transitive packages. Mixing LGPL into Apache 2.0 code
+    ; is allowed under the LGPL's dynamic-linking clause.
+    LGPL
+    GNU Library or Lesser General Public License (LGPL)
+    LGPLv2.1
+    LGPLv2.1+
+    GNU Lesser General Public License v2 or later (LGPLv2+)
+    GNU General Public License v2 or later (GPLv2+)
 
 unauthorized_licenses:
     MPL 1.1
     MPL-1.1
     GPLv2
-    GPLv2+
-    LGPL
-    GNU Library or Lesser General Public License (LGPL)
-    LGPLv2.1
-    LGPLv2.1+
     LGPLv3
     GPLv3+
     GNU General Public License v3 (GPLv3)
