@@ -123,6 +123,25 @@ def _emit_scaffold_section(scaffold_block: Dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+# Multi-line continuation values need re-indenting after configparser strip.
+_INDENT_BY_KEY = {
+    "upstream_pins": 8,         # tox `commands =` continuation depth
+    "extra_deps_packages": 4,   # tox `deps =` continuation depth
+    "extra_deps": 4,
+}
+
+
+def _reindent_continuation(value: str, indent: int) -> str:
+    stripped = value.strip("\n")
+    if not stripped:
+        return ""
+    prefix = " " * indent
+    return "\n".join(
+        (prefix + line) if line.strip() else line
+        for line in stripped.splitlines()
+    )
+
+
 def _gather_substitutions(
     scaffold_block: Dict[str, str], template_kind: str
 ) -> Dict[str, str]:
@@ -142,6 +161,10 @@ def _gather_substitutions(
 
     if template_kind == "agent" and not out["skills_paths"]:
         out["skills_paths"] = f"{out['packages_paths']}/skills"
+
+    for key, indent in _INDENT_BY_KEY.items():
+        if key in out and "\n" in out[key].strip():
+            out[key] = _reindent_continuation(out[key], indent)
 
     _render_pylint_flags(out)
 
