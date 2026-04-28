@@ -2,12 +2,11 @@ import sys
 from typing import List, Optional, Tuple
 
 import click
-import subprocess
-from pathlib import Path
 
 from tox.run import run as tox_run
 
 from tomte import __version__
+from tomte.scaffold import scaffold as scaffold_group
 from tomte.tools.check_copyright import main as check_copyright_main
 from tomte.tools.check_doc_links import main as check_doc_links_main
 from tomte.tools.check_readme import main as check_readme_main
@@ -107,14 +106,6 @@ def freeze_dependencies(output_path: Optional[str], exclude_package: Tuple[str, 
     freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package)
 
 
-@click.command()
-def check_spelling() -> None:
-    """Check spelling on all the doc .md files."""
-    script_path = Path(__file__).resolve()
-    target_script = Path(script_path.parent, 'scripts', 'check_spelling.sh')
-    subprocess.call(['sh', target_script])
-
-
 cli.add_command(freeze_dependencies)
 cli.add_command(format_copyright)
 cli.add_command(format_code)
@@ -123,7 +114,7 @@ cli.add_command(check_copyright)
 cli.add_command(check_doc_links)
 cli.add_command(check_readme)
 cli.add_command(check_security)
-cli.add_command(check_spelling)
+cli.add_command(scaffold_group)
 
 
 if __name__ == "__main__":

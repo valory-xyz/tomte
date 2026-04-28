@@ -23,6 +23,39 @@ Extremely (!) opinionated by design!
 
 To install, for instance `black`, simply specify `tomte[black]==VERSION`, where `VERSION` is the latest version, and then use `black` CLI as required.
 
+## Shipped configs
+
+Since 0.7.0, tomte ships canonical linter configurations as packaged
+resources. Reach them from a tox env (or any tooling) via:
+
+```python
+from tomte.configs import PYLINTRC, MYPY_INI, ISORT_CFG, FLAKE8_CFG, DARGLINT_CFG, BANDIT_YAML, SAFETY_POLICY
+```
+
+Each constant is a `pathlib.Path` to the file inside the installed
+wheel. Typical use:
+
+```ini
+[testenv:pylint]
+commands = pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc <paths>
+```
+
+## Scaffolding tox.ini
+
+Since 0.7.0, `tomte scaffold tox` renders a canonical `tox.ini` from the
+template at `tomte/templates/tox.ini.template`. Per-repo overrides go in
+the consuming repo's `pyproject.toml` under `[tool.tomte.scaffold]`. See
+`tomte scaffold tox --help` for the schema.
+
+**Scope.** The tox scaffold targets *AEA agent repos* — the homogeneous
+fleet that ships `packages/valory/` skills + agents + services and
+bootstraps via the `autonomy` CLI. Framework repos (`open-aea`,
+`open-autonomy`) and library repos (`mech-client`, `mech-server`) have
+a fundamentally different env shape and keep their own hand-written
+`tox.ini`. They still consume the shipped canonical configs directly
+(`from tomte.configs import PYLINTRC, MYPY_INI, …`) via `--rcfile=` /
+`--config=` flags.
+
 ## Development:
 
 ### Install deps:
