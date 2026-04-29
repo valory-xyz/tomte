@@ -68,7 +68,14 @@ def _read_pyproject_tomte(repo_root: Path) -> Dict[str, Any]:
 
 
 def _read_local_extensions(repo_root: Path, local_path: Optional[str]) -> Dict[str, str]:
-    """Read `[tomte-extensions]` from the local tox.ini, if present."""
+    """Read `[tomte-extensions]` and any raw `[testenv:*]` sections from the local tox.ini.
+
+    `[tomte-extensions]` is parsed via configparser (typed keys → string
+    values). `[testenv:*]` sections are extracted as raw text so that
+    multi-line tox `commands` blocks keep their indentation — configparser
+    strips leading whitespace from continuation lines, which would break
+    line-continuation syntax in pytest invocations etc.
+    """
     if not local_path:
         return {}
     full_path = repo_root / local_path
@@ -76,9 +83,49 @@ def _read_local_extensions(repo_root: Path, local_path: Optional[str]) -> Dict[s
         return {}
     parser = configparser.ConfigParser(strict=False)
     parser.read(full_path, encoding="utf-8")
-    if not parser.has_section("tomte-extensions"):
-        return {}
-    return dict(parser.items("tomte-extensions"))
+    out: Dict[str, str] = {}
+    if parser.has_section("tomte-extensions"):
+        out.update(parser.items("tomte-extensions"))
+    out["_raw_passthrough"] = _extract_raw_passthrough_sections(full_path)
+    return out
+
+
+# Sections the wrapper handles itself; everything else in the local tox.ini
+# is copied verbatim into the rendered output.
+_MANAGED_SECTIONS = {"tomte-extensions", "darglint"}
+
+
+def _is_managed(section_name: str) -> bool:
+    return section_name in _MANAGED_SECTIONS or section_name.startswith("mypy")
+
+
+def _extract_raw_passthrough_sections(path: Path) -> str:
+    """Return every section the wrapper does NOT manage, verbatim.
+
+    `[tomte-extensions]`, `[mypy*]`, and `[darglint]` are parsed/read
+    elsewhere; everything else (e.g. `[testenv:coverage]`, `[Authorized
+    Packages]`, `[pytest]`) is concatenated verbatim into the rendered
+    tox.ini so multi-line `commands` continuations and other indentation
+    survive intact.
+    """
+    blocks: List[List[str]] = []
+    current: Optional[List[str]] = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        is_section_header = stripped.startswith("[") and stripped.endswith("]")
+        if is_section_header:
+            section_name = stripped[1:-1]
+            if _is_managed(section_name):
+                current = None
+            else:
+                current = [line]
+                blocks.append(current)
+            continue
+        if current is not None:
+            current.append(line)
+    if not blocks:
+        return ""
+    return "\n".join("\n".join(block).rstrip() for block in blocks)
 
 
 def _reindent(value: str, indent: int) -> str:
@@ -139,8 +186,11 @@ def _build_substitutions(
         "PYTEST_TARGETS": _join_listish(identity["pytest_targets"]),
         "UPSTREAM_PINS": upstream_pins,
         "CHECK_HANDLERS_IGNORES": identity.get("check_handlers_ignores", ""),
+        "CHECK_DEPENDENCIES_EXTRA_EXCLUDES": identity.get(
+            "check_dependencies_extra_excludes", ""
+        ),
         "EXTRA_DEPS_PACKAGES": _reindent(extensions.get("extra_deps", ""), _DEPS_INDENT),
-        "EXTRA_TESTENVS": extensions.get("extra_testenvs", ""),
+        "EXTRA_TESTENVS": extensions.get("_raw_passthrough", ""),
         "EXTRA_PYLINT_FLAGS": _render_pylint_flags(extensions),
     }
 
