@@ -109,13 +109,6 @@ def _join_listish(value: Union[str, Sequence[str]]) -> str:
     return " ".join(value)
 
 
-def _multiline_listish(value: Union[str, Sequence[str]]) -> str:
-    """Tox testenv values that the template renders one-per-line."""
-    if isinstance(value, str):
-        return value
-    return "\n".join(value)
-
-
 def _build_substitutions(
     identity: Dict[str, Any], extensions: Dict[str, str]
 ) -> Dict[str, str]:
@@ -140,7 +133,7 @@ def _build_substitutions(
         "OPEN_AEA_VERSION": identity["open_aea_version"],
         "PACKAGES_PATHS": pkg_paths,
         "SKILLS_PATHS": skills_paths,
-        "SERVICE_SPECIFIC_PACKAGES": _multiline_listish(identity["service_specific_packages"]),
+        "SERVICE_SPECIFIC_PACKAGES": _join_listish(identity["service_specific_packages"]),
         "KNOWN_FIRST_PARTY": identity["known_first_party"],
         "SERVICE_PUBLIC_ID": identity["service_public_id"],
         "PYTEST_TARGETS": _join_listish(identity["pytest_targets"]),
