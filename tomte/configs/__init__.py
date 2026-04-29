@@ -20,6 +20,7 @@ DARGLINT_CFG: Path = _path("darglint.cfg")
 BANDIT_YAML: Path = _path("bandit.yaml")
 SAFETY_POLICY: Path = _path("safety-policy.yml")
 GITLEAKS_TOML: Path = _path("gitleaks.toml")
+TOX_INI: Path = _path("tox.ini")
 
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "BANDIT_YAML",
     "SAFETY_POLICY",
     "GITLEAKS_TOML",
+    "TOX_INI",
 ]

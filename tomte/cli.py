@@ -14,6 +14,7 @@ from tomte.tools.freeze_dependencies import main as freeze_dependencies_main
 from tomte.tools.freeze_gitleaks import main as freeze_gitleaks_main
 from tomte.tools.render_isort_config import main as render_isort_config_main
 from tomte.tools.render_mypy_config import main as render_mypy_config_main
+from tomte.tools.tox_runtime import tomte_tox
 
 
 @click.group(name="tomte")  # type: ignore
@@ -152,6 +153,7 @@ cli.add_command(scaffold_group)
 cli.add_command(render_isort_config)
 cli.add_command(render_mypy_config)
 cli.add_command(freeze_gitleaks)
+cli.add_command(tomte_tox)
 
 
 if __name__ == "__main__":
