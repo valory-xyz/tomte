@@ -407,13 +407,20 @@ def _autoderive_extra_deps(pyproject: Dict[str, Any]) -> List[str]:
 def _resolve_extra_deps(
     pyproject: Dict[str, Any], extensions: Dict[str, str]
 ) -> str:
-    """Combined extra_deps: auto-derived pyproject pins + lint-only locals.
+    """Combined extra_deps: auto-derived pyproject pins + local overrides.
 
-    Pyproject is the single source of truth for any package that ships at
-    runtime: its strict pins win over any local `[tomte-extensions]
-    extra_deps` entry for the same name. The local block is reserved for
-    lint-time-only deps (e.g. type stubs, formatters' transitive deps)
-    that aren't part of the runtime dependency set.
+    Pyproject's `[project].dependencies` provides the default — every
+    runtime dep is auto-mirrored into testenv extras. Per-repo
+    `[tomte-extensions] extra_deps` is reserved for two cases:
+
+    1. **Lint-only extras** not in pyproject (type stubs, formatters'
+       transitive deps): kept verbatim.
+    2. **Form overrides** for runtime deps: when a package YAML expects
+       a range expression (`web3<8,>=7.0.0`) but pyproject pins exactly
+       (`web3==7.14.1`), the local form wins so `aea-helpers
+       check-dependencies` (string-strict) matches both sides. Local
+       only declares the names that need this; everything else
+       inherits the auto-derived pin.
     """
     auto = _autoderive_extra_deps(pyproject)
     local_raw = (extensions.get("extra_deps") or "").strip()
@@ -423,16 +430,16 @@ def _resolve_extra_deps(
             stripped = line.split(";", 1)[0].strip()
             if stripped:
                 local.append(stripped)
-    auto_names: Set[str] = set()
-    for entry in auto:
+    local_names: Set[str] = set()
+    for entry in local:
         match = _DEP_NAME_RE.match(entry)
         if match:
-            auto_names.add(match.group(1).lower())
-    deduped_local = [
-        d for d in local
-        if (m := _DEP_NAME_RE.match(d)) and m.group(1).lower() not in auto_names
+            local_names.add(match.group(1).lower())
+    deduped_auto = [
+        d for d in auto
+        if (m := _DEP_NAME_RE.match(d)) and m.group(1).lower() not in local_names
     ]
-    return "\n".join(auto + deduped_local)
+    return "\n".join(deduped_auto + local)
 
 
 def _resolve_check_handlers_ignores(
