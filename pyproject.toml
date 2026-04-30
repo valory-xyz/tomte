@@ -72,6 +72,9 @@ liccheck = ["liccheck"]
 [tool.poetry.scripts]
 tomte = "tomte.cli:cli"
 
+[tool.poetry.plugins."pytest11"]
+tomte_defaults = "tomte.pytest_plugin"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
