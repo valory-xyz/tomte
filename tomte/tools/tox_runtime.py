@@ -15,7 +15,7 @@ canonical tox.ini into a temp file in the repo root, and invokes
 from __future__ import annotations
 
 import configparser
-import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -31,17 +31,22 @@ import click
 
 from tomte import __version__
 from tomte.configs import TOX_INI
-
-
-_REQUIRED_KEYS: Tuple[str, ...] = (
-    "packages_paths",
-    "pytest_targets",
-    "service_specific_packages",
-    "service_public_id",
-    "known_first_party",
-    "open_autonomy_version",
-    "open_aea_version",
+from tomte.tools.packages_json import (
+    dev_package_paths,
+    dev_package_test_paths,
+    discover_service_public_id,
 )
+
+
+# Hardcoded fleet-wide constants. Previously per-repo `[tool.tomte]` keys;
+# moved here because they never vary across consumers downstream of OA.
+_KNOWN_FIRST_PARTY = "autonomy"
+
+# `packages_paths` is the only key consumers must declare — it tells tomte
+# where the author-namespaced packages tree lives (e.g. "packages/valory").
+# Every other field has a default derived from packages.json or
+# pyproject.toml, so consumers omit them unless they need to override.
+_REQUIRED_KEYS: Tuple[str, ...] = ("packages_paths",)
 
 # Multi-line continuation values need re-indenting after configparser strip.
 _DEPS_INDENT = 4
@@ -51,20 +56,66 @@ _DEPS_INDENT = 4
 # overwrite cleanly across runs.
 _RENDERED_TOX_FILENAME = ".tomte-tox.ini"
 
+# darglint has no `--config-file` flag and reads from `[darglint]` in
+# tox.ini / setup.cfg / .darglint in CWD. Since the rendered tox.ini lives
+# at `.tomte-tox.ini` (not a name darglint searches), we drop a `.darglint`
+# alongside it at runtime so all consumers share fleet-uniform settings
+# without having to copy the block into their own tox.ini.
+_RENDERED_DARGLINT_FILENAME = ".darglint"
+_DARGLINT_CONFIG = """[darglint]
+docstring_style = sphinx
+strictness = short
+ignore_regex = async_act|.*_pb2\\.py
+ignore = DAR401
+"""
 
-def _read_pyproject_tomte(repo_root: Path) -> Dict[str, Any]:
+# PEP 508 dep matcher for `open-autonomy[extras]==X.Y.Z` style pins.
+_PIN_RE = re.compile(
+    r"^\s*([A-Za-z0-9][A-Za-z0-9_\-]*)\s*(?:\[[A-Za-z0-9_\-,\s]+\])?\s*==\s*([0-9A-Za-z\.\-_]+)"
+)
+
+
+def _read_pyproject(repo_root: Path) -> Dict[str, Any]:
     pyproject_path = repo_root / "pyproject.toml"
     if not pyproject_path.is_file():
         raise click.UsageError(f"No pyproject.toml at {pyproject_path}")
     with pyproject_path.open("rb") as fh:
-        data = tomllib.load(fh)
-    section = data.get("tool", {}).get("tomte", {})
+        return tomllib.load(fh)
+
+
+def _read_tomte_section(pyproject: Dict[str, Any]) -> Dict[str, Any]:
+    section = pyproject.get("tool", {}).get("tomte", {})
     if not section:
         raise click.UsageError(
             "Missing [tool.tomte] section in pyproject.toml. "
             "See `tomte tox --help` for the schema."
         )
     return section
+
+
+def _parse_versions_from_dependencies(
+    pyproject: Dict[str, Any],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Pull (open_autonomy_version, open_aea_version) out of [project].dependencies.
+
+    These versions appear as exact pins on `open-autonomy` and one of the
+    `open-aea-ledger-*` packages — both required across the agent fleet.
+    Returning None for either means the consumer omitted the canonical
+    pin and must declare the version explicitly in [tool.tomte].
+    """
+    deps = pyproject.get("project", {}).get("dependencies", []) or []
+    autonomy_version: Optional[str] = None
+    aea_version: Optional[str] = None
+    for dep in deps:
+        match = _PIN_RE.match(dep)
+        if not match:
+            continue
+        name, version = match.group(1).lower(), match.group(2)
+        if name == "open-autonomy":
+            autonomy_version = version
+        elif aea_version is None and name.startswith("open-aea-ledger-"):
+            aea_version = version
+    return autonomy_version, aea_version
 
 
 def _read_local_extensions(repo_root: Path, local_path: Optional[str]) -> Dict[str, str]:
@@ -91,7 +142,8 @@ def _read_local_extensions(repo_root: Path, local_path: Optional[str]) -> Dict[s
 
 
 # Sections the wrapper handles itself; everything else in the local tox.ini
-# is copied verbatim into the rendered output.
+# is copied verbatim into the rendered output. `[darglint]` is dropped
+# silently because tomte renders its own .darglint at runtime.
 _MANAGED_SECTIONS = {"tomte-extensions", "darglint"}
 
 
@@ -156,8 +208,63 @@ def _join_listish(value: Union[str, Sequence[str]]) -> str:
     return " ".join(value)
 
 
+def _subtract(paths: Sequence[str], excluded: Sequence[str]) -> List[str]:
+    excluded_set = {p.rstrip("/") for p in excluded}
+    return [p for p in paths if p.rstrip("/") not in excluded_set]
+
+
+def _resolve_pytest_targets(
+    repo_root: Path, identity: Dict[str, Any]
+) -> List[str]:
+    explicit = identity.get("pytest_targets")
+    if explicit:
+        return list(explicit) if not isinstance(explicit, str) else [explicit]
+    discovered = dev_package_test_paths(repo_root)
+    return _subtract(discovered, identity.get("pytest_targets_exclude", []) or [])
+
+
+def _resolve_service_specific_packages(
+    repo_root: Path, identity: Dict[str, Any]
+) -> List[str]:
+    explicit = identity.get("service_specific_packages")
+    if explicit:
+        return list(explicit) if not isinstance(explicit, str) else [explicit]
+    discovered = dev_package_paths(repo_root)
+    return _subtract(
+        discovered, identity.get("service_specific_packages_exclude", []) or []
+    )
+
+
+def _resolve_versions(
+    pyproject: Dict[str, Any], identity: Dict[str, Any]
+) -> Tuple[str, str]:
+    autonomy = identity.get("open_autonomy_version")
+    aea = identity.get("open_aea_version")
+    if autonomy and aea:
+        return autonomy, aea
+    parsed_autonomy, parsed_aea = _parse_versions_from_dependencies(pyproject)
+    autonomy = autonomy or parsed_autonomy
+    aea = aea or parsed_aea
+    if not autonomy:
+        raise click.UsageError(
+            "Could not determine open-autonomy version. Either pin "
+            "`open-autonomy==X.Y.Z` in [project].dependencies or set "
+            "`open_autonomy_version` in [tool.tomte]."
+        )
+    if not aea:
+        raise click.UsageError(
+            "Could not determine open-aea version. Either pin an "
+            "`open-aea-ledger-*==X.Y.Z` in [project].dependencies or set "
+            "`open_aea_version` in [tool.tomte]."
+        )
+    return autonomy, aea
+
+
 def _build_substitutions(
-    identity: Dict[str, Any], extensions: Dict[str, str]
+    repo_root: Path,
+    pyproject: Dict[str, Any],
+    identity: Dict[str, Any],
+    extensions: Dict[str, str],
 ) -> Dict[str, str]:
     missing = [k for k in _REQUIRED_KEYS if not identity.get(k)]
     if missing:
@@ -168,22 +275,35 @@ def _build_substitutions(
     pkg_paths = identity["packages_paths"]
     skills_paths = identity.get("skills_paths") or f"{pkg_paths}/skills"
 
+    autonomy_version, aea_version = _resolve_versions(pyproject, identity)
+
     upstream_pins = identity.get("upstream_pins") or (
-        f"--upstream valory-xyz/open-autonomy@{identity['open_autonomy_version']} "
-        f"--upstream valory-xyz/open-aea@{identity['open_aea_version']}"
+        f"--upstream valory-xyz/open-autonomy@{autonomy_version} "
+        f"--upstream valory-xyz/open-aea@{aea_version}"
+    )
+
+    service_public_id = (
+        identity.get("service_public_id")
+        or discover_service_public_id(repo_root)
+        or ""
+    )
+
+    pytest_targets = _resolve_pytest_targets(repo_root, identity)
+    service_specific_packages = _resolve_service_specific_packages(
+        repo_root, identity
     )
 
     return {
         "TOMTE_VERSION": __version__,
         "TOMTE_DEP_PIN": identity.get("tomte_dep_pin", f"=={__version__}"),
-        "OPEN_AUTONOMY_VERSION": identity["open_autonomy_version"],
-        "OPEN_AEA_VERSION": identity["open_aea_version"],
+        "OPEN_AUTONOMY_VERSION": autonomy_version,
+        "OPEN_AEA_VERSION": aea_version,
         "PACKAGES_PATHS": pkg_paths,
         "SKILLS_PATHS": skills_paths,
-        "SERVICE_SPECIFIC_PACKAGES": _join_listish(identity["service_specific_packages"]),
-        "KNOWN_FIRST_PARTY": identity["known_first_party"],
-        "SERVICE_PUBLIC_ID": identity["service_public_id"],
-        "PYTEST_TARGETS": _join_listish(identity["pytest_targets"]),
+        "SERVICE_SPECIFIC_PACKAGES": _join_listish(service_specific_packages),
+        "KNOWN_FIRST_PARTY": _KNOWN_FIRST_PARTY,
+        "SERVICE_PUBLIC_ID": service_public_id,
+        "PYTEST_TARGETS": _join_listish(pytest_targets),
         "UPSTREAM_PINS": upstream_pins,
         "CHECK_HANDLERS_IGNORES": identity.get("check_handlers_ignores", ""),
         "CHECK_DEPENDENCIES_EXTRA_EXCLUDES": identity.get(
@@ -195,9 +315,14 @@ def _build_substitutions(
     }
 
 
-def _render(identity: Dict[str, Any], extensions: Dict[str, str]) -> str:
+def _render(
+    repo_root: Path,
+    pyproject: Dict[str, Any],
+    identity: Dict[str, Any],
+    extensions: Dict[str, str],
+) -> str:
     template_text = TOX_INI.read_text(encoding="utf-8")
-    substitutions = _build_substitutions(identity, extensions)
+    substitutions = _build_substitutions(repo_root, pyproject, identity, extensions)
     try:
         return Template(template_text).substitute(substitutions)
     except KeyError as exc:
@@ -232,22 +357,33 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
     repo root, then invokes `tox -c <temp> <tox_args>`.
     """
     repo_root = repo_root.resolve()
-    identity = _read_pyproject_tomte(repo_root)
+    pyproject = _read_pyproject(repo_root)
+    identity = _read_tomte_section(pyproject)
     extensions = _read_local_extensions(repo_root, identity.get("local_extensions"))
-    rendered = _render(identity, extensions)
+    rendered = _render(repo_root, pyproject, identity, extensions)
 
     if show:
         click.echo(rendered)
         return
 
     rendered_path = repo_root / _RENDERED_TOX_FILENAME
+    darglint_path = repo_root / _RENDERED_DARGLINT_FILENAME
     rendered_path.write_text(rendered, encoding="utf-8")
+    darglint_existed = darglint_path.exists()
+    if not darglint_existed:
+        darglint_path.write_text(_DARGLINT_CONFIG, encoding="utf-8")
     try:
         cmd = ["tox", "-c", str(rendered_path)] + list(tox_args)
         result = subprocess.run(cmd, cwd=repo_root, check=False)
         sys.exit(result.returncode)
     finally:
-        try:
-            rendered_path.unlink()
-        except OSError:
-            pass
+        for path, written in [
+            (rendered_path, True),
+            (darglint_path, not darglint_existed),
+        ]:
+            if not written:
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                pass
