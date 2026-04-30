@@ -242,9 +242,14 @@ def _resolve_pytest_targets(
 ) -> List[str]:
     explicit = identity.get("pytest_targets")
     if explicit:
-        return list(explicit) if not isinstance(explicit, str) else [explicit]
-    discovered = dev_package_test_paths(repo_root)
-    return _subtract(discovered, identity.get("pytest_targets_exclude", []) or [])
+        base = list(explicit) if not isinstance(explicit, str) else [explicit]
+    else:
+        discovered = dev_package_test_paths(repo_root)
+        base = _subtract(discovered, identity.get("pytest_targets_exclude", []) or [])
+    extra = identity.get("pytest_targets_extra", []) or []
+    if isinstance(extra, str):
+        extra = [extra]
+    return base + [e for e in extra if e not in base]
 
 
 def _resolve_service_specific_packages(
@@ -252,11 +257,16 @@ def _resolve_service_specific_packages(
 ) -> List[str]:
     explicit = identity.get("service_specific_packages")
     if explicit:
-        return list(explicit) if not isinstance(explicit, str) else [explicit]
-    discovered = dev_package_paths(repo_root)
-    return _subtract(
-        discovered, identity.get("service_specific_packages_exclude", []) or []
-    )
+        base = list(explicit) if not isinstance(explicit, str) else [explicit]
+    else:
+        discovered = dev_package_paths(repo_root)
+        base = _subtract(
+            discovered, identity.get("service_specific_packages_exclude", []) or []
+        )
+    extra = identity.get("service_specific_packages_extra", []) or []
+    if isinstance(extra, str):
+        extra = [extra]
+    return base + [e for e in extra if e not in base]
 
 
 def _resolve_versions(
