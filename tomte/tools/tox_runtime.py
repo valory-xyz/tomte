@@ -36,6 +36,7 @@ from tomte.tools.packages_json import (
     dev_package_paths,
     dev_package_test_paths,
     discover_service_public_id,
+    load_packages_json,
     third_party_package_names,
 )
 
@@ -287,12 +288,31 @@ def _detect_packages_paths(repo_root: Path, identity: Dict[str, Any]) -> str:
     """Auto-detect `packages_paths` when the consumer omits it.
 
     Convention: `packages/<author>/{skills,contracts,connections,...}/`.
-    If exactly one author dir contains any of the known package types, use
-    `packages/<author>`. Otherwise the consumer must declare it.
+    Strategy (most specific first):
+
+    1. Prefer the author of `dev` packages in `packages.json`. The dir for
+       third-party packages (typically `packages/open_aea/`, `packages/fetchai/`)
+       is also present on disk but does NOT own dev code; using the
+       packages.json `dev` author resolves that ambiguity.
+    2. Fall back to scanning `packages/<author>/` for known type subdirs;
+       use the unique candidate if there's exactly one.
+
+    Raises if neither path yields a single answer.
     """
     explicit = identity.get("packages_paths")
     if explicit:
         return explicit
+
+    data = load_packages_json(repo_root)
+    if data is not None:
+        dev_authors: Set[str] = set()
+        for key in data.get("dev", {}):
+            parts = key.split("/")
+            if len(parts) == 4:
+                dev_authors.add(parts[1])
+        if len(dev_authors) == 1:
+            return f"packages/{next(iter(dev_authors))}"
+
     packages_dir = repo_root / "packages"
     if not packages_dir.is_dir():
         raise click.UsageError(
@@ -319,8 +339,9 @@ def _detect_packages_paths(repo_root: Path, identity: Dict[str, Any]) -> str:
         )
     raise click.UsageError(
         "Could not auto-detect `packages_paths`: packages/ has multiple "
-        f"author directories ({', '.join(c.name for c in candidates)}). "
-        "Set `packages_paths` in [tool.tomte] explicitly."
+        f"author directories ({', '.join(c.name for c in candidates)}) "
+        "and packages.json does not disambiguate. Set `packages_paths` "
+        "in [tool.tomte] explicitly."
     )
 
 
