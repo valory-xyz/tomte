@@ -558,4 +558,8 @@ paths = [
     '''\.env$''',
     # Test files contain dummy / mock values, not real secrets
     '''(.*?)tests\/(.*)$''',
+    # The gitleaks rule file itself: its own regex literals trigger
+    # several rules (RSA-PK, SSH-DSA-PK, OPENSSH-PK, PKCS8-PK, SSH-EC-PK,
+    # PGP-PK, discord-client-secret) on the file that defines them.
+    '''.*\.gitleaks\.toml$''',
 ]
