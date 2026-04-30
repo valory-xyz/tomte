@@ -440,19 +440,31 @@ def _resolve_check_handlers_ignores(
 ) -> str:
     """`-i <name>` flags for `autonomy analyse handlers`.
 
-    Default: every third-party package name from packages.json (those have
-    handlers we don't own and shouldn't lint). Consumers override or extend
-    via `[tool.tomte] check_handlers_ignores` (string or list).
+    Always includes every third-party package name from packages.json
+    (we don't own those handlers, can't lint them). Merge semantics for
+    consumer overrides:
+
+    - List form (preferred): adds repo-specific dev-package names that
+      don't have ABCI handlers (e.g. utility skills) on top of the
+      auto-derived third-party ignores.
+    - String form (legacy): used verbatim, REPLACING the auto-derive.
+      Kept for backward compat with the e3dcda64-era trader/mech configs.
     """
     explicit = identity.get("check_handlers_ignores")
     if isinstance(explicit, str) and explicit.strip():
         return explicit
-    if isinstance(explicit, list) and explicit:
-        return " ".join(f"-i {name}" for name in explicit)
-    auto = third_party_package_names(repo_root)
-    if not auto:
+    auto_names = third_party_package_names(repo_root)
+    extras: List[str] = []
+    if isinstance(explicit, list):
+        seen = set(auto_names)
+        for name in explicit:
+            if name not in seen:
+                extras.append(name)
+                seen.add(name)
+    all_names = list(auto_names) + extras
+    if not all_names:
         return ""
-    return " ".join(f"-i {name}" for name in auto)
+    return " ".join(f"-i {name}" for name in all_names)
 
 
 def _resolve_check_dependencies_extra_excludes(identity: Dict[str, Any]) -> str:
