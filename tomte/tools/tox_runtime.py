@@ -539,33 +539,44 @@ def _render_gitleaks_merged(repo_root: Path, identity: Dict[str, Any]) -> str:
     """Build the merged gitleaks config: canonical base + repo allowlist.
 
     `[extend].path` references tomte's canonical gitleaks.toml so consumers
-    inherit every rule. `[allowlist].paths` adds repo-specific path patterns
-    (e.g. Vite UI bundle outputs that trip generic-api-key on every build).
+    inherit every rule. `[allowlist]` may add:
+
+    - `paths`: file-path patterns (e.g. Vite UI bundle outputs that trip
+      generic-api-key on every build)
+    - `regexes`: content patterns (e.g. IPFS CIDv1 hashes used by Open
+      Autonomy package fingerprints — content-addressed integrity hashes,
+      not secrets)
     """
-    extra_paths_raw = identity.get("gitleaks_extra_paths") or []
-    if isinstance(extra_paths_raw, str):
-        extra_paths = [extra_paths_raw]
-    else:
-        extra_paths = list(extra_paths_raw)
+    def _as_list(value: Any) -> List[str]:
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return list(value)
+
+    extra_paths = _as_list(identity.get("gitleaks_extra_paths"))
+    extra_regexes = _as_list(identity.get("gitleaks_extra_regexes"))
     base_path = str(GITLEAKS_TOML)
-    if not extra_paths:
+    if not extra_paths and not extra_regexes:
         return (
             "[extend]\n"
             "useDefault = false\n"
             f'path = "{base_path}"\n'
         )
-    indented = ",\n".join(f"    '''{p}'''" for p in extra_paths)
-    return (
+    blocks = [
         "[extend]\n"
         "useDefault = false\n"
-        f'path = "{base_path}"\n'
-        "\n"
+        f'path = "{base_path}"\n',
         "[allowlist]\n"
-        f'description = "{repo_root.name} overrides"\n'
-        "paths = [\n"
-        f"{indented}\n"
-        "]\n"
-    )
+        f'description = "{repo_root.name} overrides"\n',
+    ]
+    if extra_paths:
+        indented = ",\n".join(f"    '''{p}'''" for p in extra_paths)
+        blocks.append("paths = [\n" + indented + "\n]\n")
+    if extra_regexes:
+        indented = ",\n".join(f"    '''{r}'''" for r in extra_regexes)
+        blocks.append("regexes = [\n" + indented + "\n]\n")
+    return "\n".join(blocks)
 
 
 def _build_substitutions(
