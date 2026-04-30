@@ -378,9 +378,20 @@ def _autoderive_extra_deps(pyproject: Dict[str, Any]) -> List[str]:
     Skips:
       - OA / open-aea / open-aea-ledger-* (already in canonical [deps-packages])
       - tomte / pip / setuptools (canonical envs install these themselves)
-      - `[tool.uv.sources]`-resolved deps (no version, just a name)
+      - `[tool.uv.sources]`-resolved deps: bare names that appear in
+        pyproject without a version constraint *and* have a matching entry
+        in `[tool.uv.sources]` (typically a private git repo). These
+        cannot be installed by `pip install <name>` without uv, so the
+        tox testenvs would fail.
     """
     deps_raw = pyproject.get("project", {}).get("dependencies", []) or []
+    uv_sources = (
+        pyproject.get("tool", {}).get("uv", {}).get("sources", {}) or {}
+    )
+    # uv sources keys are PEP 503-normalised names (lowercase, hyphens).
+    uv_source_names = {
+        re.sub(r"[-_.]+", "-", k.lower()) for k in uv_sources
+    }
     out: List[str] = []
     for dep in deps_raw:
         if not isinstance(dep, str):
@@ -395,10 +406,10 @@ def _autoderive_extra_deps(pyproject: Dict[str, Any]) -> List[str]:
         name = match.group(1).lower()
         if name in _CANONICAL_DEP_NAMES or name.startswith("open-aea-ledger-"):
             continue
-        # uv source-pinned deps appear in [project].dependencies as a bare
-        # name (no `==` etc.). They resolve against [tool.uv.sources]; the
-        # tox testenvs can't follow that, so skip.
-        if "==" not in clean and ">=" not in clean and "<" not in clean and "~=" not in clean:
+        norm_name = re.sub(r"[-_.]+", "-", name)
+        is_bare = not any(op in clean for op in ("==", ">=", "<", "~=", ">"))
+        if is_bare and norm_name in uv_source_names:
+            # uv-source-resolved private deps; skip.
             continue
         out.append(clean)
     return out
