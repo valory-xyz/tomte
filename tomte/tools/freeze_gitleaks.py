@@ -53,6 +53,16 @@ def main(output: str = ".gitleaksignore", gitleaks_executable: str = "gitleaks")
             raise SystemExit(
                 f"gitleaks failed with exit code {proc.returncode}; aborting."
             )
+        # Gate on report file presence — without this, a gitleaks run that
+        # errored mid-write (permission denied, disk full) with a 0/1 exit
+        # produces a missing or truncated report we'd then silently treat
+        # as "0 findings", effectively disabling the baseline.
+        if not Path(report_path).exists():
+            sys.stderr.write(proc.stderr)
+            raise SystemExit(
+                f"gitleaks reported success ({proc.returncode}) but wrote no "
+                f"report file at {report_path}; aborting."
+            )
         findings = json.loads(Path(report_path).read_text(encoding="utf-8") or "[]")
         fingerprints: List[str] = sorted({_fingerprint(f) for f in findings})
         Path(output).write_text(

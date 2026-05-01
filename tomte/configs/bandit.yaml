@@ -1,7 +1,7 @@
 # Canonical bandit config shipped by tomte.
 #
 # Repos consume this via:
-#   bandit -c $(python -c "import tomte.configs as c; print(c.bandit_yaml())") -r <paths>
+#   bandit -c $(python -c "from tomte.configs import BANDIT_YAML; print(BANDIT_YAML)") -r <paths>
 #
 # Excluded test directories — bandit's default checks are noisy when run
 # against pytest harnesses (assert is fine in tests). Other skips align

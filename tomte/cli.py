@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
@@ -33,9 +34,11 @@ def format_code() -> None:
 @click.option("--author", type=str, required=True, multiple=True, help="Author name(s) to accept in copyright headers.")
 @click.option("--exclude-part", '-e', multiple=True)
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
-def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
+@click.option("--repo-root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory containing packages/packages.json for third-party auto-exclude (default: cwd).")
+def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...], repo_root: "Optional[Path]") -> None:
     """Run copyright formatter."""
-    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path)
+    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path, repo_root=repo_root)
 
 
 @click.command()
@@ -71,9 +74,11 @@ def check_security() -> None:
 @click.option("--author", type=str, required=True, multiple=True, help="Author name(s) to accept in copyright headers.")
 @click.option("--exclude-part", '-e', multiple=True)
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
-def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
+@click.option("--repo-root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory containing packages/packages.json for third-party auto-exclude (default: cwd).")
+def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...], repo_root: "Optional[Path]") -> None:
     """Check copyright on all the files in a project."""
-    check_copyright_main(author, set(exclude_part), scan_paths=scan_path)
+    check_copyright_main(author, set(exclude_part), scan_paths=scan_path, repo_root=repo_root)
 
 
 @click.command()

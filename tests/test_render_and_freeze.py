@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from tomte import configs
 from tomte.tools import freeze_gitleaks, render_isort_config, render_mypy_config
 
 
@@ -73,13 +74,21 @@ def test_render_mypy_config_appends_overlay(tmp_path):
 
 
 def test_render_mypy_config_no_overlay(tmp_path):
+    """Without an overlay, the rendered mypy.ini equals tomte's canonical
+    (base [mypy] block + the framework-level [mypy-<lib>] entries shipped
+    in tomte/configs/mypy.ini). Repo-specific overrides come from the
+    `--append-from` overlay applied by the [testenv:mypy] commands_pre.
+    """
     out = tmp_path / "mypy.ini"
     render_mypy_config.main(output=str(out))
     parser = configparser.ConfigParser()
     parser.read(out)
     assert parser.has_section("mypy")
-    overlays = [s for s in parser.sections() if s.startswith("mypy-")]
-    assert overlays == []
+    canonical = configparser.ConfigParser()
+    canonical.read(configs.MYPY_INI)
+    rendered_overlays = sorted(s for s in parser.sections() if s.startswith("mypy-"))
+    canonical_overlays = sorted(s for s in canonical.sections() if s.startswith("mypy-"))
+    assert rendered_overlays == canonical_overlays
 
 
 def test_freeze_gitleaks_emits_fingerprints(tmp_path):

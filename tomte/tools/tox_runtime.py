@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import configparser
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -52,11 +53,22 @@ _DEPS_INDENT = 4
 # overwrite cleanly across runs.
 _RENDERED_TOX_FILENAME = ".tomte-tox.ini"
 
+# Marker line at the top of every managed sidecar. Lets the wrapper
+# distinguish files it wrote on a previous run (overwrite-safe) from
+# user-owned files with the same name (error and abort — silently
+# adopting them would override [tomte-extensions] config and produce
+# mystery debugging downstream). `#` is a valid comment char in
+# configparser INI (.darglint, .tomte-tox.ini) and TOML
+# (.tomte-gitleaks-merged.toml), so the same marker works for every
+# sidecar format.
+_MANAGED_MARKER = "# managed by `tomte tox` — do not edit; will be regenerated"
+
 # darglint has no `--config-file` flag and reads from `[darglint]` in
 # tox.ini / setup.cfg / .darglint in CWD. Since the rendered tox.ini lives
 # at `.tomte-tox.ini` (not a name darglint searches), we drop a `.darglint`
-# alongside it at runtime so all consumers share fleet-uniform settings
-# without having to copy the block into their own tox.ini.
+# alongside it at runtime so all consumers share fleet-uniform settings.
+# Filename is fixed by darglint, so we use _MANAGED_MARKER to detect
+# pre-existing user-owned files instead of a `.tomte-` prefix.
 _RENDERED_DARGLINT_FILENAME = ".darglint"
 _DARGLINT_CONFIG = """[darglint]
 docstring_style = sphinx
@@ -69,8 +81,9 @@ ignore = DAR401
 # allowlist additions; the standard pattern is `[extend].path` pointing at
 # the base config + a local `[allowlist].paths` section. The wrapper writes
 # this merged file at runtime so the canonical [testenv:gitleaks] env can
-# reference a deterministic path.
-_RENDERED_GITLEAKS_FILENAME = ".gitleaks-merged.toml"
+# reference a deterministic path. `.tomte-` prefix because gitleaks accepts
+# `--config=` so we have free choice of filename.
+_RENDERED_GITLEAKS_FILENAME = ".tomte-gitleaks-merged.toml"
 
 # PEP 508 dep matcher — extracts the leftmost package name token. Used to
 # classify deps for the auto-derived [tomte-extensions] extra_deps.
@@ -149,7 +162,17 @@ def _read_local_extensions(repo_root: Path, local_path: Optional[str]) -> Dict[s
     if not full_path.is_file():
         return {}
     parser = configparser.ConfigParser(strict=False)
-    parser.read(full_path, encoding="utf-8")
+    # Use read_file (not read) so configparser.ParsingError propagates —
+    # a typo'd unbracketed line at the top of a consumer's tox.ini
+    # otherwise produces a rendered file missing every [tomte-extensions]
+    # override with no breadcrumb back to the parse error.
+    try:
+        with full_path.open(encoding="utf-8") as handle:
+            parser.read_file(handle, source=str(full_path))
+    except configparser.ParsingError as exc:
+        raise click.UsageError(
+            f"Failed to parse {full_path}: {exc}"
+        ) from exc
     out: Dict[str, str] = {}
     if parser.has_section("tomte-extensions"):
         out.update(parser.items("tomte-extensions"))
@@ -240,11 +263,15 @@ def _resolve_pytest_targets(
     repo_root: Path, identity: Dict[str, Any]
 ) -> List[str]:
     explicit = identity.get("pytest_targets")
+    excludes = identity.get("pytest_targets_exclude", []) or []
     if explicit:
         base = list(explicit) if not isinstance(explicit, str) else [explicit]
     else:
-        discovered = dev_package_test_paths(repo_root)
-        base = _subtract(discovered, identity.get("pytest_targets_exclude", []) or [])
+        base = dev_package_test_paths(repo_root)
+    # Apply exclude unconditionally — silently ignoring it when an explicit
+    # list is provided would surprise users who legitimately want to refine
+    # an explicit set, and yields no error/warning.
+    base = _subtract(base, excludes)
     extra = identity.get("pytest_targets_extra", []) or []
     if isinstance(extra, str):
         extra = [extra]
@@ -255,13 +282,14 @@ def _resolve_service_specific_packages(
     repo_root: Path, identity: Dict[str, Any]
 ) -> List[str]:
     explicit = identity.get("service_specific_packages")
+    excludes = identity.get("service_specific_packages_exclude", []) or []
     if explicit:
         base = list(explicit) if not isinstance(explicit, str) else [explicit]
     else:
-        discovered = dev_package_paths(repo_root)
-        base = _subtract(
-            discovered, identity.get("service_specific_packages_exclude", []) or []
-        )
+        base = dev_package_paths(repo_root)
+    # Apply exclude unconditionally for the same reason as
+    # `_resolve_pytest_targets`.
+    base = _subtract(base, excludes)
     extra = identity.get("service_specific_packages_extra", []) or []
     if isinstance(extra, str):
         extra = [extra]
@@ -644,6 +672,37 @@ def _render(
         ) from exc
 
 
+def _assert_managed_or_absent(path: Path, label: str) -> None:
+    """Refuse to overwrite a file that doesn't carry the managed marker.
+
+    A user-owned `.darglint` (or other sidecar) at the same path would
+    otherwise be silently clobbered then deleted by the wrapper, hiding
+    the user's config. The marker is the first line of every sidecar
+    tomte writes; its absence means the file is not ours.
+    """
+    if not path.exists():
+        return
+    try:
+        first_line = path.read_text(encoding="utf-8").split("\n", 1)[0]
+    except OSError as exc:
+        raise click.UsageError(f"Cannot read existing {label} at {path}: {exc}") from exc
+    if first_line.strip() != _MANAGED_MARKER.strip():
+        raise click.UsageError(
+            f"Refusing to overwrite existing {label} at {path}: file is not "
+            f"managed by `tomte tox` (first line missing the managed marker). "
+            f"Move or delete the file and re-run, or rename it so it doesn't "
+            f"clash with tomte's reserved sidecar names."
+        )
+
+
+def _write_managed_sidecar(path: Path, content: str) -> None:
+    """Write a sidecar with the managed marker prepended (idempotent)."""
+    if content.startswith(_MANAGED_MARKER):
+        path.write_text(content, encoding="utf-8")
+    else:
+        path.write_text(f"{_MANAGED_MARKER}\n{content}", encoding="utf-8")
+
+
 @click.command(
     name="tox",
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
@@ -668,8 +727,8 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
     `tox.ini` exists, or `local_extensions` is set explicitly) the
     `[tomte-extensions]` section from it. Renders tomte's canonical tox.ini
     into a temp file in the repo root, writes companion `.darglint` /
-    `.gitleaks-merged.toml` files the canonical envs reference, then invokes
-    `tox -c <temp> <tox_args>`.
+    `.tomte-gitleaks-merged.toml` files the canonical envs reference, then
+    invokes `tox -c <temp> <tox_args>`.
     """
     repo_root = repo_root.resolve()
     pyproject = _read_pyproject(repo_root)
@@ -682,30 +741,38 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
         click.echo(rendered)
         return
 
+    if shutil.which("tox") is None:
+        raise click.UsageError(
+            "tox not found on PATH. Install tomte's `tox` extra "
+            "(`pip install 'tomte[tox]'`) or `pip install tox` directly."
+        )
+
     rendered_path = repo_root / _RENDERED_TOX_FILENAME
     darglint_path = repo_root / _RENDERED_DARGLINT_FILENAME
     gitleaks_path = repo_root / _RENDERED_GITLEAKS_FILENAME
-    rendered_path.write_text(rendered, encoding="utf-8")
-    darglint_existed = darglint_path.exists()
-    gitleaks_existed = gitleaks_path.exists()
-    if not darglint_existed:
-        darglint_path.write_text(_DARGLINT_CONFIG, encoding="utf-8")
-    if not gitleaks_existed:
-        gitleaks_path.write_text(
-            _render_gitleaks_merged(repo_root, identity), encoding="utf-8"
-        )
+
+    # Refuse to clobber non-managed files with our reserved names. Catches
+    # both pre-existing user files and concurrent runs in the same checkout
+    # that may have left a stale file behind (we always remove ours in
+    # `finally`, but a SIGKILL'd run can leak).
+    _assert_managed_or_absent(rendered_path, ".tomte-tox.ini")
+    _assert_managed_or_absent(darglint_path, ".darglint")
+    _assert_managed_or_absent(gitleaks_path, ".tomte-gitleaks-merged.toml")
+
     try:
+        # Writes happen inside `try` so any failure between here and tox
+        # invocation still triggers the cleanup branch — otherwise files
+        # leak into the repo root.
+        _write_managed_sidecar(rendered_path, rendered)
+        _write_managed_sidecar(darglint_path, _DARGLINT_CONFIG)
+        _write_managed_sidecar(
+            gitleaks_path, _render_gitleaks_merged(repo_root, identity)
+        )
         cmd = ["tox", "-c", str(rendered_path)] + list(tox_args)
         result = subprocess.run(cmd, cwd=repo_root, check=False)
         sys.exit(result.returncode)
     finally:
-        for path, written in [
-            (rendered_path, True),
-            (darglint_path, not darglint_existed),
-            (gitleaks_path, not gitleaks_existed),
-        ]:
-            if not written:
-                continue
+        for path in (rendered_path, darglint_path, gitleaks_path):
             try:
                 path.unlink()
             except OSError:

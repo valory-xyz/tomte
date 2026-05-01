@@ -16,15 +16,32 @@ import configparser
 from pathlib import Path
 from typing import Optional
 
+import click
+
 from tomte.configs import MYPY_INI
+
+
+def _read_strict(parser: configparser.ConfigParser, path: Path) -> None:
+    """Parse `path` via `read_file` so configparser.ParsingError surfaces.
+
+    `parser.read()` returns an empty list on parse failure rather than
+    raising — a malformed overlay would silently drop every `[mypy-*]`
+    override and mypy then fails downstream with no breadcrumb back to the
+    parse error.
+    """
+    try:
+        with path.open(encoding="utf-8") as handle:
+            parser.read_file(handle, source=str(path))
+    except configparser.ParsingError as exc:
+        raise click.UsageError(f"Failed to parse {path}: {exc}") from exc
 
 
 def main(output: str, append_from: Optional[str] = None) -> None:
     merged = configparser.ConfigParser(strict=False)
-    merged.read(MYPY_INI, encoding="utf-8")
+    _read_strict(merged, Path(MYPY_INI))
     if append_from:
         overlay = configparser.ConfigParser(strict=False)
-        overlay.read(append_from, encoding="utf-8")
+        _read_strict(overlay, Path(append_from))
         for section in overlay.sections():
             if not section.startswith("mypy"):
                 continue

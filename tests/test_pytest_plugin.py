@@ -73,33 +73,39 @@ def test_markers_unregistered_when_not_opted_in(pytester):
     result.stdout.fnmatch_lines(["*'integration' not found in `markers`*"])
 
 
-def test_aea_deprecation_warning_filtered_when_opted_in(pytester):
-    """DeprecationWarning emitted from an aea.* module is suppressed when opted in."""
+_AEA_FILTERWARNINGS_INTROSPECTION = """
+def test_aea_filter_present(pytestconfig):
+    entries = pytestconfig.getini("filterwarnings")
+    assert "ignore::DeprecationWarning:aea.*:" in entries
+
+
+def test_aea_filter_absent(pytestconfig):
+    entries = pytestconfig.getini("filterwarnings")
+    assert "ignore::DeprecationWarning:aea.*:" not in entries
+"""
+
+
+def test_aea_deprecation_filter_registered_when_opted_in(pytester):
+    """Opt-in registers the aea.* DeprecationWarning ignore in pytest's filterwarnings.
+
+    Behavioural verification (running pytest with `-W error` and asserting
+    a warning fires/doesn't fire) is misleading because CLI `-W` is
+    evaluated AFTER ini `filterwarnings` — Python's last-match-wins rule
+    means a CLI `-W error` always trumps our ini-level ignore. Instead,
+    introspect the resolved ini list directly: that's what pytest's
+    warning machinery consults at runtime.
+    """
     pytester.makefile(".ini", tox=_OPT_IN_INI)
-    pytester.makepyfile(
-        """
-        import sys
-        import types
-        import warnings
+    pytester.makepyfile(_AEA_FILTERWARNINGS_INTROSPECTION)
+    result = pytester.runpytest_subprocess("-q", "-k", "test_aea_filter_present")
+    result.assert_outcomes(passed=1)
 
-        aea_pkg = types.ModuleType("aea")
-        aea_foo = types.ModuleType("aea.foo")
-        aea_pkg.foo = aea_foo
-        sys.modules["aea"] = aea_pkg
-        sys.modules["aea.foo"] = aea_foo
 
-        def emit():
-            warnings.warn("legacy aea API", DeprecationWarning, stacklevel=2)
-
-        aea_foo.emit = emit
-
-        def test_aea_warning_does_not_error():
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")
-                pass
-        """
-    )
-    result = pytester.runpytest("-W", "error::DeprecationWarning", "-q")
+def test_aea_deprecation_filter_silent_when_not_opted_in(pytester):
+    """Without opt-in, the aea.* filter is NOT in pytest's filterwarnings list."""
+    pytester.makefile(".ini", tox=_NO_OPT_IN_INI)
+    pytester.makepyfile(_AEA_FILTERWARNINGS_INTROSPECTION)
+    result = pytester.runpytest_subprocess("-q", "-k", "test_aea_filter_absent")
     result.assert_outcomes(passed=1)
 
 

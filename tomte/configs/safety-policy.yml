@@ -1,7 +1,7 @@
 # Canonical safety policy shipped by tomte.
 #
 # Repos consume this via:
-#   safety check --policy-file $(python -c "import tomte.configs as c; print(c.safety_policy())")
+#   safety check --policy-file $(python -c "from tomte.configs import SAFETY_POLICY; print(SAFETY_POLICY)")
 #
 # Vulnerability allowlist — repos extend with their own ignores by
 # composing a per-repo policy file when needed. The fleet's baseline is

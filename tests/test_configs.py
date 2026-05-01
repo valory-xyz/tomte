@@ -58,8 +58,13 @@ def test_pylintrc_carries_pylint_internals_only():
         assert not ignored.strip(), f"unexpected ignored-modules: {ignored!r}"
 
 
-def test_mypy_ini_has_base_only_no_third_party_overrides():
-    """Mypy canonical ships base strictness + protobuf exclude, no library names."""
+def test_mypy_ini_carries_framework_third_party_blocks():
+    """Mypy canonical ships base strictness, protobuf exclude, and framework-level
+    `[mypy-<lib>]` blocks for libraries that recur across the fleet.
+
+    Repo-specific `[mypy-<lib>]` overrides still live in each consumer's tox.ini
+    and layer on at runtime via `tomte render-mypy-config --append-from`.
+    """
     parser = configparser.ConfigParser()
     parser.read(configs.MYPY_INI)
     assert parser.has_section("mypy")
@@ -67,8 +72,32 @@ def test_mypy_ini_has_base_only_no_third_party_overrides():
     assert parser["mypy"].get("disallow_untyped_defs") == "True"
     exclude = parser["mypy"].get("exclude", "")
     assert "_pb2" in exclude and "custom_types" in exclude
-    mypy_module_sections = [s for s in parser.sections() if s.startswith("mypy-")]
-    assert not mypy_module_sections, f"unexpected sections: {mypy_module_sections!r}"
+    # Framework libs without type stubs that should be centralised so
+    # every fleet repo doesn't re-declare them. Sentinel set, not exhaustive.
+    blocks = {s for s in parser.sections() if s.startswith("mypy-")}
+    expected = {
+        "mypy-aea.*",
+        "mypy-autonomy.*",
+        "mypy-web3.*",
+        "mypy-packages.open_aea.*",
+    }
+    missing = expected - blocks
+    assert not missing, f"expected framework blocks missing from canonical: {missing!r}"
+    # Every centralised block should declare exactly one allowed knob:
+    # ignore_missing_imports (libs without type stubs) or ignore_errors
+    # (vendored package trees synced from IPFS, e.g. packages.open_aea.*,
+    # packages.fetchai.*). Anything else implies the canonical is taking a
+    # stronger stance than the consumer-extensible policy supports.
+    _ALLOWED_KNOBS = {"ignore_missing_imports", "ignore_errors"}
+    for section in blocks:
+        keys = set(parser[section].keys())
+        assert keys.issubset(_ALLOWED_KNOBS), (
+            f"[{section}] declares unsupported keys: {keys - _ALLOWED_KNOBS!r}"
+        )
+        for key in keys:
+            assert parser[section][key] == "True", (
+                f"[{section}] {key} must be True (got {parser[section][key]!r})"
+            )
 
 
 def test_isort_canonical_carries_no_per_repo_packaging_facts():

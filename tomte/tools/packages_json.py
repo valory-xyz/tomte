@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import click
+
 # Singular types in packages.json keys → plural directory names on disk.
 _TYPE_TO_DIR: Dict[str, str] = {
     "skill": "skills",
@@ -64,12 +66,31 @@ def _key_to_path(key: str) -> Optional[Path]:
 
 
 def load_packages_json(repo_root: Path) -> Optional[Dict[str, Dict[str, str]]]:
-    """Return parsed packages.json, or None if the file is absent."""
+    """Return parsed packages.json, or None if the file is absent.
+
+    Raises ``click.UsageError`` on truncated / malformed JSON, or when the
+    file is present but lacks both ``dev`` and ``third_party`` top-level
+    keys (a typo like ``"devs"`` would otherwise produce empty pytest /
+    linter target lists with no breadcrumb to the typo).
+    """
     path = _packages_json_path(repo_root)
     if not path.is_file():
         return None
     with path.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+        try:
+            data = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise click.UsageError(f"Failed to parse {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise click.UsageError(
+            f"{path}: expected a JSON object at top level, got {type(data).__name__}"
+        )
+    if "dev" not in data and "third_party" not in data:
+        raise click.UsageError(
+            f"{path}: neither 'dev' nor 'third_party' top-level key present "
+            f"(found: {sorted(data)}). Check for typos like 'devs'."
+        )
+    return data
 
 
 def dev_package_paths(
