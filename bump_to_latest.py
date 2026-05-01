@@ -95,6 +95,29 @@ def resolve_optional_extra_name(config: Dict, dependency_name: str) -> Optional[
     return matches[0]
 
 
+def build_extra_flags(dependency_meta: Dict, optional_extra_name: Optional[str]) -> List[str]:
+    """Reproduce non-version dependency-meta keys as `poetry add` flags.
+
+    Without this, `poetry add pkg@==X.Y --optional=cli` strips the
+    `python = "<3.11"` / `markers = "..."` qualifiers that distinguish
+    conditional from unconditional deps. Re-emit them so the round-trip
+    is lossless.
+    """
+    flags: List[str] = []
+    if dependency_meta.get("optional") and optional_extra_name is not None:
+        flags.append(f"--optional={optional_extra_name}")
+    python_marker = dependency_meta.get("python")
+    if python_marker:
+        flags.append(f"--python={python_marker}")
+    platform_marker = dependency_meta.get("platform")
+    if platform_marker:
+        flags.append(f"--platform={platform_marker}")
+    pep508_markers = dependency_meta.get("markers")
+    if pep508_markers:
+        flags.append(f"--markers={pep508_markers}")
+    return flags
+
+
 def set_dependency_version(
     dependency_name: str,
     dependency_meta: Dict,
@@ -103,12 +126,7 @@ def set_dependency_version(
     dry_run: bool,
 ) -> bool:
     current_spec = dependency_meta["version"]
-    optional_flag = []
-    if dependency_meta.get("optional"):
-        if optional_extra_name is not None:
-            optional_flag = [f"--optional={optional_extra_name}"]
-        else:
-            optional_flag = []
+    extra_flags = build_extra_flags(dependency_meta, optional_extra_name)
 
     if dry_run:
         if not candidate_versions:
@@ -119,7 +137,7 @@ def set_dependency_version(
         target_spec = f"=={candidate_versions[0]}"
         print(f"Updating {dependency_name}: {current_spec} -> {target_spec}")
         run_command(
-            ["poetry", "add", f"{dependency_name}@{target_spec}", *optional_flag],
+            ["poetry", "add", f"{dependency_name}@{target_spec}", *extra_flags],
             dry_run=True,
         )
         return True
@@ -128,7 +146,7 @@ def set_dependency_version(
         target_spec = f"=={candidate_version}"
         print(f"Trying {dependency_name}: {current_spec} -> {target_spec}")
         result = run_command(
-            ["poetry", "add", f"{dependency_name}@{target_spec}", *optional_flag],
+            ["poetry", "add", f"{dependency_name}@{target_spec}", *extra_flags],
             dry_run=False,
             check=False,
         )

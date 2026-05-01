@@ -1,9 +1,8 @@
 import sys
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
-import subprocess
-from pathlib import Path
 
 from tox.run import run as tox_run
 
@@ -12,6 +11,10 @@ from tomte.tools.check_copyright import main as check_copyright_main
 from tomte.tools.check_doc_links import main as check_doc_links_main
 from tomte.tools.check_readme import main as check_readme_main
 from tomte.tools.freeze_dependencies import main as freeze_dependencies_main
+from tomte.tools.freeze_gitleaks import main as freeze_gitleaks_main
+from tomte.tools.render_isort_config import main as render_isort_config_main
+from tomte.tools.render_mypy_config import main as render_mypy_config_main
+from tomte.tools.tox_runtime import tomte_tox
 
 
 @click.group(name="tomte")  # type: ignore
@@ -31,9 +34,11 @@ def format_code() -> None:
 @click.option("--author", type=str, required=True, multiple=True, help="Author name(s) to accept in copyright headers.")
 @click.option("--exclude-part", '-e', multiple=True)
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
-def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
+@click.option("--repo-root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory containing packages/packages.json for third-party auto-exclude (default: cwd).")
+def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...], repo_root: "Optional[Path]") -> None:
     """Run copyright formatter."""
-    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path)
+    check_copyright_main(author, set(exclude_part), fix=True, scan_paths=scan_path, repo_root=repo_root)
 
 
 @click.command()
@@ -69,9 +74,11 @@ def check_security() -> None:
 @click.option("--author", type=str, required=True, multiple=True, help="Author name(s) to accept in copyright headers.")
 @click.option("--exclude-part", '-e', multiple=True)
 @click.option("--scan-path", multiple=True, help="Paths to scan (overrides defaults).")
-def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...]) -> None:
+@click.option("--repo-root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory containing packages/packages.json for third-party auto-exclude (default: cwd).")
+def check_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], scan_path: Tuple[str, ...], repo_root: "Optional[Path]") -> None:
     """Check copyright on all the files in a project."""
-    check_copyright_main(author, set(exclude_part), scan_paths=scan_path)
+    check_copyright_main(author, set(exclude_part), scan_paths=scan_path, repo_root=repo_root)
 
 
 @click.command()
@@ -107,12 +114,35 @@ def freeze_dependencies(output_path: Optional[str], exclude_package: Tuple[str, 
     freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package)
 
 
-@click.command()
-def check_spelling() -> None:
-    """Check spelling on all the doc .md files."""
-    script_path = Path(__file__).resolve()
-    target_script = Path(script_path.parent, 'scripts', 'check_spelling.sh')
-    subprocess.call(['sh', target_script])
+@click.command(name="render-isort-config")
+@click.option("--output", required=True, type=click.Path(), help="Where to write the merged isort.cfg.")
+@click.option("--known-first-party", default="", help="Per-repo `known_first_party` value.")
+@click.option("--known-packages", default="", help="Per-repo `known_packages` value.")
+@click.option("--known-local-folder", default="", help="Per-repo `known_local_folder` value.")
+def render_isort_config(output: str, known_first_party: str, known_packages: str, known_local_folder: str) -> None:
+    """Render tomte canonical isort.cfg + per-repo packaging keys to a merged file."""
+    render_isort_config_main(
+        output=output,
+        known_first_party=known_first_party,
+        known_packages=known_packages,
+        known_local_folder=known_local_folder,
+    )
+
+
+@click.command(name="render-mypy-config")
+@click.option("--output", required=True, type=click.Path(), help="Where to write the merged mypy.ini.")
+@click.option("--append-from", default="", type=click.Path(), help="Path to ini file whose [mypy*] sections layer onto canonical.")
+def render_mypy_config(output: str, append_from: str) -> None:
+    """Render tomte canonical mypy.ini + an additional ini file's [mypy*] sections."""
+    render_mypy_config_main(output=output, append_from=append_from)
+
+
+@click.command(name="freeze-gitleaks")
+@click.option("--output", default=".gitleaksignore", type=click.Path(), help="Where to write the .gitleaksignore.")
+@click.option("--gitleaks-executable", default="gitleaks", help="gitleaks binary on PATH.")
+def freeze_gitleaks(output: str, gitleaks_executable: str) -> None:
+    """Run gitleaks against tomte canonical config and emit current findings as a baseline."""
+    freeze_gitleaks_main(output=output, gitleaks_executable=gitleaks_executable)
 
 
 cli.add_command(freeze_dependencies)
@@ -123,7 +153,10 @@ cli.add_command(check_copyright)
 cli.add_command(check_doc_links)
 cli.add_command(check_readme)
 cli.add_command(check_security)
-cli.add_command(check_spelling)
+cli.add_command(render_isort_config)
+cli.add_command(render_mypy_config)
+cli.add_command(freeze_gitleaks)
+cli.add_command(tomte_tox)
 
 
 if __name__ == "__main__":

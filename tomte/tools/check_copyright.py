@@ -38,6 +38,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple, cast
 
+from tomte.tools.packages_json import third_party_package_names
+
 BIRTH_YEAR = 2021
 CURRENT_YEAR = datetime.now().year
 GIT_PATH = shutil.which("git")
@@ -528,18 +530,29 @@ def main(
     exclude_parts: Set[str],
     fix: bool = False,
     scan_paths: Optional[Tuple[str, ...]] = None,
+    repo_root: Optional[Path] = None,
 ) -> None:
     """Main function.
 
     :param authors: tuple of author names. First author is the primary (used for fix mode
         and year validation). Additional authors are accepted as historical.
-    :param exclude_parts: set of path parts to exclude.
+    :param exclude_parts: set of path parts to exclude. Auto-augmented with the
+        names of every package listed under ``third_party`` in
+        ``packages/packages.json`` when that file exists, so consumers don't
+        have to enumerate framework packages by hand.
     :param fix: whether to fix headers or just check.
     :param scan_paths: custom paths to scan. If None, uses default (packages/{author}, tests, scripts).
+    :param repo_root: directory containing ``packages/packages.json`` for
+        third-party auto-exclude (defaults to ``Path.cwd()``). Pass an
+        explicit path when invoking this from a working directory other
+        than the repo root, e.g. via tox.
     """
 
     primary_author = authors[0]
     exclude_files = {Path("scripts", "whitelist.py")}
+    if repo_root is None:
+        repo_root = Path.cwd()
+    exclude_parts = set(exclude_parts) | set(third_party_package_names(repo_root))
 
     if scan_paths:
         path_tuples = [tuple(p.split("/")) for p in scan_paths]

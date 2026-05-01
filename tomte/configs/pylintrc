@@ -1,0 +1,73 @@
+# Canonical pylintrc base. Per-repo `ignored-modules` and per-repo
+# `disable=` extras are passed as CLI flags from each consumer's
+# `[testenv:pylint]`, not enumerated here.
+
+[MASTER]
+ignore-patterns=__main__.py,.*_pb2.py
+ignore=
+
+[MESSAGES CONTROL]
+#
+# C0103: invalid-name (test_x_runs_y conflicts; AEA naming has historical drift)
+# C0201: consider-iterating-dictionary
+# C0204: bad-mcs-classmethod-argument
+# C0206: consider-using-dict-items
+# C0209: consider-using-fstring
+# C0301: line-too-long (handled by flake8 / black)
+# C0302: too-many-lines
+# E0611: no-name-in-module (false-positives on dynamic imports)
+# E1136: unsubscriptable-object (false-positives on TypedDict pre-3.11)
+# R0402: consider-using-from-import
+# R0801: similar-lines (too granular)
+# R0901: too-many-ancestors (skill class hierarchies are tall by design)
+# R0904: too-many-public-methods (handler classes have one per message type)
+# R0912: too-many-branches
+# R0913: too-many-arguments (skill constructors fan in)
+# R0917: too-many-positional-arguments
+# R1710: inconsistent-return-statements
+# R1714: consider-using-in
+# R1729: use-a-generator
+# R1732: consider-using-with
+# R1733: unnecessary-dict-index-lookup
+# R1734: use-list-literal
+# R1735: use-dict-literal
+# W0105: pointless-string-statement (used as section markers in some skills)
+# W0237: arguments-renamed (overrides legitimately rename for clarity)
+# W0511: fixme (TODO/FIXME tracked elsewhere)
+# W0640: cell-var-from-loop
+# W0707: raise-missing-from (eventually-resolve)
+# W1202: logging-format-interpolation
+# W1203: logging-fstring-interpolation (no consensus on logging policy)
+# W1514: unspecified-encoding
+disable=C0103,C0201,C0204,C0206,C0209,C0301,C0302,E0611,E1136,R0402,R0801,R0901,R0904,R0912,R0913,R0917,R1710,R1714,R1729,R1732,R1733,R1734,R1735,W0105,W0237,W0511,W0640,W0707,W1202,W1203,W1514
+
+[DESIGN]
+# Most-permissive thresholds across the agent-fleet repos. Pylint's
+# [DESIGN] knobs flag classes/functions above the limit; carrying the
+# loose end means adopting this canonical never tightens any repo.
+# Repos that want stricter limits override locally (file-level
+# `# pylint: disable=` or their own [tool.pylint.design] section).
+min-public-methods=1
+max-public-methods=58
+max-args=27
+max-locals=31
+max-statements=80
+max-parents=11
+max-attributes=38
+max-branches=36
+max-returns=10
+max-bool-expr=7
+
+[REFACTORING]
+max-nested-blocks=6
+
+[SIMILARITIES]
+min-similarity-lines=10
+ignore-comments=yes
+ignore-docstrings=yes
+ignore-imports=no
+
+[SPELLING]
+# Intentionally empty. The fleet drops mdspell-based spell-check entirely
+# in tomte 0.7.0; pylint's spelling check runs only when explicitly
+# enabled via spelling-dict.

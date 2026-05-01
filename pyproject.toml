@@ -1,10 +1,13 @@
 [tool.poetry]
 name = "tomte"
-version = "0.6.5"
+version = "0.7.0"
 description = "A library that wraps many useful tools (linters, analysers, etc) to keep Python code clean, secure, well-documented and optimised."
 authors = ["David Minarsch <david.minarsch@googlemail.com>"]
 license = "MIT"
 readme = "README.md"
+include = [
+    { path = "tomte/configs/*", format = ["sdist", "wheel"] },
+]
 
 [tool.poetry.dependencies]
 python = "<4,>=3.10"
@@ -46,11 +49,13 @@ liccheck = {version = "==0.9.2", optional = true}
 click = {version = "==8.3.1", optional = true}
 requests = {version = "==2.32.5", optional = true}
 typing-extensions = {version = "==4.15.0", optional = true}
+# `tomte tox` reads pyproject.toml; tomllib is stdlib on 3.11+.
+tomli = {version = ">=2.0,<3", python = "<3.11", optional = true}
 
 [tool.poetry.extras]
 black = ["black", "click"]
 bandit = ["bandit"]
-cli = ["click", "requests", "tox"]
+cli = ["click", "requests", "tox", "tomli"]
 isort = ["isort"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "pydocstyle", "flake8-pytest-style"]
 mypy = ["mypy"]
@@ -65,6 +70,9 @@ liccheck = ["liccheck"]
 
 [tool.poetry.scripts]
 tomte = "tomte.cli:cli"
+
+[tool.poetry.plugins."pytest11"]
+tomte_defaults = "tomte.pytest_plugin"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

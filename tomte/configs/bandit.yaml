@@ -1,0 +1,24 @@
+# Canonical bandit config shipped by tomte.
+#
+# Repos consume this via:
+#   bandit -c $(python -c "from tomte.configs import BANDIT_YAML; print(BANDIT_YAML)") -r <paths>
+#
+# Excluded test directories — bandit's default checks are noisy when run
+# against pytest harnesses (assert is fine in tests). Other skips align
+# with how the framework already uses subprocess and tempfile.
+
+exclude_dirs:
+  - tests
+  - test_tools
+
+skips:
+  # B101 assert_used — assertions inside tests/ are intentional. Already
+  # excluded via the directory list, but the skip prevents false-positives
+  # in non-test paths that legitimately use `assert` for invariants.
+  - B101
+  # B404 import_subprocess — agent runtime invokes subprocess intentionally
+  # (deployment generators, autonomy CLI). Bandit flags every import.
+  - B404
+  # B603 subprocess_without_shell_equals_true — same: the runtime uses
+  # subprocess.run with shell=False already; B603 still flags it.
+  - B603

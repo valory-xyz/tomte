@@ -3475,7 +3475,7 @@ tomli = {version = ">=2.0.1", markers = "python_version < \"3.11\""}
 [extras]
 bandit = ["bandit"]
 black = ["black", "click"]
-cli = ["click", "requests", "tox"]
+cli = ["click", "requests", "tomli", "tox"]
 darglint = ["darglint"]
 docs = ["Markdown", "Pygments", "bs4", "click", "markdown-include", "mkdocs", "mkdocs-macros-plugin", "mkdocs-material", "mkdocs-material-extensions", "mkdocs-redirects", "pydoc-markdown", "pydocstyle", "pymdown-extensions"]
 flake8 = ["flake8", "flake8-bugbear", "flake8-docstrings", "flake8-eradicate", "flake8-isort", "flake8-pytest-style", "pydocstyle"]
@@ -3491,4 +3491,4 @@ vulture = ["vulture"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<4,>=3.10"
-content-hash = "48da18210d8b6522cf85f397408acbc684ac3f19f0e75295d1f7962bc0bd3171"
+content-hash = "db241c2c12ffcf5b4bf1f4bc3a5809f16aacd4ae43486488d1e8e2b903ce7c7b"
