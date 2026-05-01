@@ -70,6 +70,25 @@ keep their own hand-written `tox.ini` and consume the canonical configs
 directly (`from tomte.configs import PYLINTRC, MYPY_INI, …`) via
 `--rcfile=` / `--config=` flags.
 
+## Pytest plugin (opt-in)
+
+Tomte declares a `pytest11` entry-point plugin in `pyproject.toml` that
+ships fleet-canonical pytest defaults: the `integration` and `e2e`
+markers, plus an `ignore::DeprecationWarning:aea.*:` filter. Pytest
+auto-loads pytest11 plugins, so the plugin module is imported in any
+environment where tomte is installed — but the plugin is **silent by
+default**; it registers nothing unless the consumer opts in:
+
+```ini
+# tox.ini (or pyproject.toml [tool.pytest.ini_options], or pytest.ini)
+[pytest]
+tomte_defaults = true
+```
+
+Truthy spellings: `true`, `1`, `yes`, `on` (case-insensitive). Without
+opt-in, non-fleet `tomte[black]` / `tomte[mypy]` consumers see no
+config injection.
+
 ## Development:
 
 ### Install deps:
