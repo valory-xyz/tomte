@@ -20,8 +20,10 @@
 """Tomte pytest plugin — ships canonical pytest defaults to consumer repos.
 
 Loaded automatically by pytest via the `pytest11` entry point declared in
-tomte's pyproject.toml. Repos extend or override via their own pytest config
-(tox.ini [pytest], pyproject [tool.pytest.ini_options], pytest.ini).
+tomte's pyproject.toml. Opt-in only: the plugin registers nothing unless the
+consumer sets ``tomte_defaults = true`` in their pytest config (tox.ini
+``[pytest]``, pyproject ``[tool.pytest.ini_options]``, or pytest.ini). This
+keeps non-fleet ``tomte[black]`` / ``tomte[mypy]`` consumers unaffected.
 """
 
 import pytest
@@ -32,13 +34,30 @@ _DEFAULT_MARKERS = (
     "e2e: marks end-to-end agent tests",
 )
 
-_DEFAULT_FILTERWARNINGS = (
-    "ignore::DeprecationWarning:aea.*:",
-)
+_DEFAULT_FILTERWARNINGS = ("ignore::DeprecationWarning:aea.*:",)
+
+_TRUTHY = {"true", "1", "yes", "on"}
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the ``tomte_defaults`` ini opt-in flag."""
+    parser.addini(
+        "tomte_defaults",
+        type="string",
+        default="false",
+        help=(
+            "When truthy (true/1/yes/on), apply tomte's canonical pytest "
+            "defaults: integration/e2e markers and the aea.* "
+            "DeprecationWarning filter."
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Register canonical markers and warning filters."""
+    """Register canonical markers and warning filters when opted in."""
+    raw = config.getini("tomte_defaults")
+    if str(raw).strip().lower() not in _TRUTHY:
+        return
     for marker in _DEFAULT_MARKERS:
         config.addinivalue_line("markers", marker)
     for entry in _DEFAULT_FILTERWARNINGS:

@@ -24,8 +24,20 @@
 pytest_plugins = ["pytester"]
 
 
-def test_canonical_markers_registered(pytester):
-    """integration and e2e markers resolve under --strict-markers from the plugin alone."""
+_OPT_IN_INI = """
+[pytest]
+tomte_defaults = true
+"""
+
+_NO_OPT_IN_INI = """
+[pytest]
+tomte_defaults = false
+"""
+
+
+def test_canonical_markers_registered_when_opted_in(pytester):
+    """integration and e2e markers resolve under --strict-markers when opted in."""
+    pytester.makefile(".ini", tox=_OPT_IN_INI)
     pytester.makepyfile(
         """
         import pytest
@@ -39,19 +51,37 @@ def test_canonical_markers_registered(pytester):
             pass
         """
     )
-    result = pytester.runpytest("--strict-markers", "-q")
+    result = pytester.runpytest_subprocess("--strict-markers", "-q")
     result.assert_outcomes(passed=2)
 
 
-def test_aea_deprecation_warning_filtered(pytester):
-    """DeprecationWarning emitted from an aea.* module is suppressed by the plugin filter."""
+def test_markers_unregistered_when_not_opted_in(pytester):
+    """Plugin is silent when tomte_defaults is unset; --strict-markers rejects."""
+    pytester.makefile(".ini", tox=_NO_OPT_IN_INI)
+    pytester.makepyfile(
+        """
+        import pytest
+
+        @pytest.mark.integration
+        def test_marked_integration():
+            pass
+        """
+    )
+    result = pytester.runpytest_subprocess("--strict-markers", "-q")
+    # --strict-markers turns unknown markers into errors at collection time
+    assert result.ret != 0
+    result.stdout.fnmatch_lines(["*'integration' not found in `markers`*"])
+
+
+def test_aea_deprecation_warning_filtered_when_opted_in(pytester):
+    """DeprecationWarning emitted from an aea.* module is suppressed when opted in."""
+    pytester.makefile(".ini", tox=_OPT_IN_INI)
     pytester.makepyfile(
         """
         import sys
         import types
         import warnings
 
-        # Create a fake aea.foo module so the warning's __module__ matches the filter
         aea_pkg = types.ModuleType("aea")
         aea_foo = types.ModuleType("aea.foo")
         aea_pkg.foo = aea_foo
@@ -64,16 +94,27 @@ def test_aea_deprecation_warning_filtered(pytester):
         aea_foo.emit = emit
 
         def test_aea_warning_does_not_error():
-            import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("error")
-                # The plugin filter is applied at pytest collection time, not by
-                # warnings.simplefilter inside the test. So instead of relying on
-                # the global filter here, we just assert pytest doesn't fail the
-                # session due to the aea warning being recorded.
                 pass
         """
     )
-    # Run with -W error to verify pytest's filter (added by our plugin) wins for aea.*
     result = pytester.runpytest("-W", "error::DeprecationWarning", "-q")
     result.assert_outcomes(passed=1)
+
+
+def test_truthy_values_accepted(pytester):
+    """Common truthy spellings (true/1/yes/on) all opt in."""
+    for raw in ("true", "TRUE", "1", "yes", "on"):
+        pytester.makefile(".ini", tox=f"[pytest]\ntomte_defaults = {raw}\n")
+        pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.integration
+            def test_marked():
+                pass
+            """
+        )
+        result = pytester.runpytest_subprocess("--strict-markers", "-q")
+        result.assert_outcomes(passed=1)
