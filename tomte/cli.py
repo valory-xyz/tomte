@@ -6,7 +6,6 @@ import click
 from tox.run import run as tox_run
 
 from tomte import __version__
-from tomte.scaffold import scaffold as scaffold_group
 from tomte.tools.check_copyright import main as check_copyright_main
 from tomte.tools.check_doc_links import main as check_doc_links_main
 from tomte.tools.check_readme import main as check_readme_main
@@ -149,7 +148,6 @@ cli.add_command(check_copyright)
 cli.add_command(check_doc_links)
 cli.add_command(check_readme)
 cli.add_command(check_security)
-cli.add_command(scaffold_group)
 cli.add_command(render_isort_config)
 cli.add_command(render_mypy_config)
 cli.add_command(freeze_gitleaks)

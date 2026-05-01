@@ -1,11 +1,10 @@
 """`tomte tox` — runtime wrapper that runs tox against tomte's canonical config.
 
-Replaces the older `tomte scaffold tox` flow that copied a 500+ line tox.ini
-into every consuming repo. Instead, the canonical tox.ini lives only in
-tomte; consuming repos carry only their identity (an optional `[tool.tomte]`
-section in pyproject.toml) and, in rare cases, a small `[tomte-extensions]`
-section in a local `tox.ini` for things that don't fit cleanly in TOML
-(extra deps with version pins, pylint extras, mypy per-package overrides).
+The canonical tox.ini lives only in tomte; consuming repos carry only
+their identity (an optional `[tool.tomte]` section in pyproject.toml)
+and, in rare cases, a small `[tomte-extensions]` section in a local
+`tox.ini` for things that don't fit cleanly in TOML (extra deps with
+version pins, pylint extras, mypy per-package overrides).
 
 The wrapper reads pyproject + (optional) local extensions, renders tomte's
 canonical tox.ini into a temp file in the repo root, writes companion

@@ -40,21 +40,35 @@ wheel. Typical use:
 commands = pylint --rcfile={envsitepackagesdir}/tomte/configs/pylintrc <paths>
 ```
 
-## Scaffolding tox.ini
+## `tomte tox` runtime wrapper
 
-Since 0.7.0, `tomte scaffold tox` renders a canonical `tox.ini` from the
-template at `tomte/templates/tox.ini.template`. Per-repo overrides go in
-the consuming repo's `pyproject.toml` under `[tool.tomte.scaffold]`. See
-`tomte scaffold tox --help` for the schema.
+Since 0.7.0, `tomte tox` renders the canonical `tox.ini` (shipped at
+`tomte/configs/tox.ini`) at runtime, reading per-repo identity from
+`[tool.tomte]` in the consumer's `pyproject.toml` and a slim
+`[tomte-extensions]` section in their local `tox.ini`. The rendered file
+is ephemeral — nothing generated lives on disk between runs. Invoke as a
+drop-in replacement: `tomte tox -e <env>`.
 
-**Scope.** The tox scaffold targets *AEA agent repos* — the homogeneous
-fleet that ships `packages/valory/` skills + agents + services and
-bootstraps via the `autonomy` CLI. Framework repos (`open-aea`,
-`open-autonomy`) and library repos (`mech-client`, `mech-server`) have
-a fundamentally different env shape and keep their own hand-written
-`tox.ini`. They still consume the shipped canonical configs directly
-(`from tomte.configs import PYLINTRC, MYPY_INI, …`) via `--rcfile=` /
-`--config=` flags.
+**Per-repo settings in `[tool.tomte]`** (TOML in `pyproject.toml`):
+`packages_paths`, `pytest_targets[_extra|_exclude]`,
+`service_specific_packages[_extra]`, `service_public_id`,
+`known_first_party`, `open_autonomy_version`, `open_aea_version`,
+`check_handlers_ignores`, `check_dependencies_extra_excludes`,
+`upstream_pins`, `gitleaks_extra_paths`, `gitleaks_extra_regexes`,
+`tomte_dep_pin`. Most defaults auto-derive from `packages.json`.
+
+**Per-repo settings in `[tomte-extensions]`** (raw INI in local `tox.ini`,
+for things that don't fit cleanly in TOML): `extra_deps`,
+`extra_pylint_disables`, `extra_pylint_ignored_modules`,
+`extra_testenvs` — multi-line continuation values that configparser
+preserves verbatim.
+
+**Scope.** `tomte tox` targets *AEA agent repos* — the homogeneous fleet
+that ships `packages/valory/` skills + agents + services and bootstraps
+via the `autonomy` CLI. Framework repos (`open-aea`, `open-autonomy`)
+keep their own hand-written `tox.ini` and consume the canonical configs
+directly (`from tomte.configs import PYLINTRC, MYPY_INI, …`) via
+`--rcfile=` / `--config=` flags.
 
 ## Development:
 
