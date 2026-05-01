@@ -37,6 +37,7 @@ _DEFAULT_MARKERS = (
 _DEFAULT_FILTERWARNINGS = ("ignore::DeprecationWarning:aea.*:",)
 
 _TRUTHY = {"true", "1", "yes", "on"}
+_FALSY = {"false", "0", "no", "off", ""}
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -54,11 +55,27 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Register canonical markers and warning filters when opted in."""
+    """Register canonical markers and warning filters when opted in.
+
+    Surfaces a warning for unknown values (typo'd ``tomte_defaults =
+    enabled`` or ``= yess``) so a silent no-op doesn't masquerade as
+    successful opt-in.
+    """
     raw = config.getini("tomte_defaults")
-    if str(raw).strip().lower() not in _TRUTHY:
+    normalised = str(raw).strip().lower()
+    if normalised in _TRUTHY:
+        for marker in _DEFAULT_MARKERS:
+            config.addinivalue_line("markers", marker)
+        for entry in _DEFAULT_FILTERWARNINGS:
+            config.addinivalue_line("filterwarnings", entry)
         return
-    for marker in _DEFAULT_MARKERS:
-        config.addinivalue_line("markers", marker)
-    for entry in _DEFAULT_FILTERWARNINGS:
-        config.addinivalue_line("filterwarnings", entry)
+    if normalised in _FALSY:
+        return
+    config.issue_config_time_warning(
+        pytest.PytestConfigWarning(
+            f"unknown tomte_defaults value {raw!r}; expected one of "
+            f"{sorted(_TRUTHY)} (truthy) or {sorted(_FALSY - {''})} (falsy). "
+            f"Tomte canonical defaults will NOT be applied."
+        ),
+        stacklevel=2,
+    )

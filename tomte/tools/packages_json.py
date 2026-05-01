@@ -85,7 +85,10 @@ def load_packages_json(repo_root: Path) -> Optional[Dict[str, Dict[str, str]]]:
         raise click.UsageError(
             f"{path}: expected a JSON object at top level, got {type(data).__name__}"
         )
-    if "dev" not in data and "third_party" not in data:
+    # Empty `{}` is legitimate bootstrap state for a brand-new fleet repo.
+    # Only the typo-guard (e.g. `"devs"` instead of `"dev"`) needs to fire,
+    # and that only makes sense when at least one key is present.
+    if data and "dev" not in data and "third_party" not in data:
         raise click.UsageError(
             f"{path}: neither 'dev' nor 'third_party' top-level key present "
             f"(found: {sorted(data)}). Check for typos like 'devs'."

@@ -679,13 +679,32 @@ def _assert_managed_or_absent(path: Path, label: str) -> None:
     otherwise be silently clobbered then deleted by the wrapper, hiding
     the user's config. The marker is the first line of every sidecar
     tomte writes; its absence means the file is not ours.
+
+    Edge cases:
+
+    - **Symlink at the reserved path** is rejected outright; cleanup
+      `unlink()` would only remove the symlink (target untouched), which
+      is safe-by-accident, not safe-by-design.
+    - **Zero-byte file** (interrupted prior run, disk full at write time)
+      is treated as stale-and-safe-to-overwrite; no marker can possibly
+      be present, but no user content can have been there either.
+    - **UTF-8 BOM** (Windows editor opened+saved): read with the
+      `utf-8-sig` codec so a leading BOM is stripped before comparison.
     """
     if not path.exists():
         return
+    if path.is_symlink():
+        raise click.UsageError(
+            f"{label} at {path} is a symlink; refusing to operate on a "
+            f"reserved sidecar path. Move or delete the symlink and re-run."
+        )
     try:
-        first_line = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        raw = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise click.UsageError(f"Cannot read existing {label} at {path}: {exc}") from exc
+    if not raw.strip():
+        return
+    first_line = raw.split("\n", 1)[0]
     if first_line.strip() != _MANAGED_MARKER.strip():
         raise click.UsageError(
             f"Refusing to overwrite existing {label} at {path}: file is not "
@@ -775,5 +794,15 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
         for path in (rendered_path, darglint_path, gitleaks_path):
             try:
                 path.unlink()
-            except OSError:
+            except FileNotFoundError:
+                # The sidecar may not have been written yet (early failure
+                # in `try` before `_write_managed_sidecar`). Nothing to do.
                 pass
+            except OSError as exc:
+                # Permission denied / file-busy / read-only mount: surface
+                # rather than swallow. The leftover file carries the
+                # managed marker, so the next run will overwrite cleanly,
+                # but the user deserves a heads-up.
+                click.echo(
+                    f"warning: failed to clean up {path}: {exc}", err=True
+                )

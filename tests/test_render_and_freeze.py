@@ -162,3 +162,70 @@ def test_freeze_gitleaks_missing_binary_raises(tmp_path):
             assert "not found on PATH" in str(exc)
         else:
             raise AssertionError("expected SystemExit when gitleaks binary missing")
+
+
+def test_freeze_gitleaks_empty_report_aborts(tmp_path):
+    """Zero-byte report (gitleaks crashed mid-write) must NOT freeze an empty
+    baseline silently — that would disable the .gitleaksignore on every
+    subsequent run."""
+    out = tmp_path / ".gitleaksignore"
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        report_path = cmd[cmd.index("-r") + 1]
+        # Touch the file at zero bytes (simulating partial flush / disk full)
+        Path(report_path).write_text("")
+
+        class _Result:
+            returncode = 0
+            stderr = "gitleaks: I/O error after partial flush\n"
+
+        return _Result()
+
+    with patch("tomte.tools.freeze_gitleaks.shutil.which", return_value="/usr/bin/gitleaks"), patch(
+        "tomte.tools.freeze_gitleaks.subprocess.run", side_effect=fake_run
+    ):
+        try:
+            freeze_gitleaks.main(output=str(out))
+        except SystemExit as exc:
+            assert "0 bytes" in str(exc) or "empty" in str(exc)
+        else:
+            raise AssertionError("expected SystemExit on empty report")
+    # The output must not have been written either way
+    assert not out.exists() or out.read_text() == ""
+
+
+def test_freeze_gitleaks_missing_report_aborts(tmp_path):
+    """Vanished report file (e.g. tmp janitor deleted it mid-run) aborts.
+
+    Note: in normal use `tempfile.NamedTemporaryFile(delete=False)` always
+    leaves a zero-byte file in place; the empty-file branch above covers
+    "subprocess never wrote to the report" cases. To exercise the
+    truly-missing branch, simulate the file being unlinked between
+    creation and the gate.
+    """
+    out = tmp_path / ".gitleaksignore"
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        report_path = cmd[cmd.index("-r") + 1]
+        # Simulate something deleting the temp file between subprocess
+        # creation and the post-run check (e.g. an aggressive tmp janitor,
+        # or a CI step that wipes /tmp).
+        Path(report_path).unlink(missing_ok=True)
+
+        class _Result:
+            returncode = 1
+            stderr = "gitleaks: SIGSEGV during scan\n"
+
+        return _Result()
+
+    with patch("tomte.tools.freeze_gitleaks.shutil.which", return_value="/usr/bin/gitleaks"), patch(
+        "tomte.tools.freeze_gitleaks.subprocess.run", side_effect=fake_run
+    ):
+        try:
+            freeze_gitleaks.main(output=str(out))
+        except SystemExit as exc:
+            assert "wrote no report" in str(exc)
+        else:
+            raise AssertionError("expected SystemExit on missing report")

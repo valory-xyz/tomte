@@ -53,17 +53,27 @@ def main(output: str = ".gitleaksignore", gitleaks_executable: str = "gitleaks")
             raise SystemExit(
                 f"gitleaks failed with exit code {proc.returncode}; aborting."
             )
-        # Gate on report file presence — without this, a gitleaks run that
-        # errored mid-write (permission denied, disk full) with a 0/1 exit
-        # produces a missing or truncated report we'd then silently treat
-        # as "0 findings", effectively disabling the baseline.
-        if not Path(report_path).exists():
+        # Gate on report file presence AND non-zero size — without these,
+        # a gitleaks run that errored mid-write (permission denied, disk
+        # full, partial flush) with a 0/1 exit produces a missing or
+        # truncated report we'd then silently treat as "0 findings",
+        # effectively disabling the baseline.
+        report_file = Path(report_path)
+        if not report_file.exists():
             sys.stderr.write(proc.stderr)
             raise SystemExit(
                 f"gitleaks reported success ({proc.returncode}) but wrote no "
                 f"report file at {report_path}; aborting."
             )
-        findings = json.loads(Path(report_path).read_text(encoding="utf-8") or "[]")
+        if report_file.stat().st_size == 0:
+            sys.stderr.write(proc.stderr)
+            raise SystemExit(
+                f"gitleaks reported success ({proc.returncode}) but the "
+                f"report at {report_path} is empty (0 bytes). Likely a "
+                f"truncated write or upstream crash; aborting rather than "
+                f"freezing an empty baseline."
+            )
+        findings = json.loads(report_file.read_text(encoding="utf-8"))
         fingerprints: List[str] = sorted({_fingerprint(f) for f in findings})
         Path(output).write_text(
             "\n".join(fingerprints) + ("\n" if fingerprints else ""),
@@ -73,7 +83,10 @@ def main(output: str = ".gitleaksignore", gitleaks_executable: str = "gitleaks")
             f"freeze-gitleaks: wrote {len(fingerprints)} fingerprint(s) to {output}\n"
         )
     finally:
-        os.unlink(report_path)
+        # The report path may have already vanished (e.g. tmp janitor
+        # deleted it, or it was never created on a fast-path abort);
+        # `missing_ok` keeps the cleanup tolerant.
+        Path(report_path).unlink(missing_ok=True)
 
 
 def _fingerprint(finding: dict) -> str:

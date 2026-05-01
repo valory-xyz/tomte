@@ -124,3 +124,38 @@ def test_truthy_values_accepted(pytester):
         )
         result = pytester.runpytest_subprocess("--strict-markers", "-q")
         result.assert_outcomes(passed=1)
+
+
+def test_unknown_tomte_defaults_value_emits_warning(pytester):
+    """A typo'd value (e.g. `enabled`, `yess`) should warn loudly, not silently no-op."""
+    pytester.makefile(".ini", tox="[pytest]\ntomte_defaults = enabled\n")
+    pytester.makepyfile(
+        """
+        def test_noop():
+            pass
+        """
+    )
+    result = pytester.runpytest_subprocess("-q")
+    # Pytest surfaces config-time warnings on stderr/stdout; pin on the
+    # diagnostic phrase so a future refactor that drops the warn keeps the
+    # test failing.
+    output = result.stdout.str() + result.stderr.str()
+    assert "unknown tomte_defaults value" in output
+    assert "'enabled'" in output
+
+
+def test_falsy_values_do_not_warn(pytester):
+    """`false` / empty / `off` are accepted as silent no-op (canonical defaults off)."""
+    for raw in ("false", "0", "no", "off", ""):
+        pytester.makefile(".ini", tox=f"[pytest]\ntomte_defaults = {raw}\n")
+        pytester.makepyfile(
+            """
+            def test_noop():
+                pass
+            """
+        )
+        result = pytester.runpytest_subprocess("-q")
+        output = result.stdout.str() + result.stderr.str()
+        assert "unknown tomte_defaults value" not in output, (
+            f"Falsy value {raw!r} unexpectedly triggered the unknown-value warning"
+        )
