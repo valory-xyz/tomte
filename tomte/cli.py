@@ -1,10 +1,7 @@
-import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import click
-
-from tox.run import run as tox_run
 
 from tomte import __version__
 from tomte.tools.check_copyright import main as check_copyright_main
@@ -23,11 +20,30 @@ def cli() -> None:
     """Command-line tool for keeping Python projects clean."""
 
 
+def _run_canonical_tox(args: Sequence[str]) -> None:
+    """Invoke `tomte tox` with the given args against the CWD.
+
+    These shortcut commands (format-code, check-code, check-security) used to
+    shell out to plain `tox` directly, which only sees the local tox.ini.
+    Under the slim `[tomte-extensions]` overlay form, the lint/format envs
+    live in tomte's bundled tox.ini and are merged in only by `tomte tox` —
+    so plain `tox -e black-check` blew up with "environment not found".
+    Routing through `tomte_tox.callback` reuses the same merge path the
+    `tomte tox` CLI takes, fixing the slim-overlay case without breaking
+    legacy hand-written tox.ini consumers (which still work because the
+    canonical envs are identical there too).
+    """
+    tomte_tox.callback(  # type: ignore[misc]
+        repo_root=Path.cwd(),
+        show=False,
+        tox_args=tuple(args),
+    )
+
+
 @click.command()
 def format_code() -> None:
     """Run code formatters sequentially: isort and black."""
-    sys.argv = ["tox", "-e", "isort", "-e", "black"]
-    tox_run()
+    _run_canonical_tox(["-e", "isort", "-e", "black"])
 
 
 @click.command()
@@ -44,30 +60,23 @@ def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], sca
 @click.command()
 def check_code() -> None:
     """Run code checks in parallel: black, isort, flake8, mypy, pylint, and darglint."""
-    sys.argv = [
-        "tox",
-        "-p",
-        "-e",
-        "black-check",
-        "-e",
-        "isort-check",
-        "-e",
-        "flake8",
-        "-e",
-        "mypy",
-        "-e",
-        "pylint",
-        "-e",
-        "darglint",
-    ]
-    tox_run()
+    _run_canonical_tox(
+        [
+            "-p",
+            "-e", "black-check",
+            "-e", "isort-check",
+            "-e", "flake8",
+            "-e", "mypy",
+            "-e", "pylint",
+            "-e", "darglint",
+        ]
+    )
 
 
 @click.command()
 def check_security() -> None:
     """Run security checks in parallel: safety and bandit."""
-    sys.argv = ["tox", "-p", "-e", "safety", "-e", "bandit"]
-    tox_run()
+    _run_canonical_tox(["-p", "-e", "safety", "-e", "bandit"])
 
 
 @click.command()
