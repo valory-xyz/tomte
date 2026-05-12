@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import click
 
@@ -20,7 +20,7 @@ def cli() -> None:
     """Command-line tool for keeping Python projects clean."""
 
 
-def _run_canonical_tox(args: Sequence[str]) -> None:
+def _run_canonical_tox(args: Tuple[str, ...]) -> None:
     """Invoke `tomte tox` with the given args against the CWD.
 
     These shortcut commands (format-code, check-code, check-security) used to
@@ -32,18 +32,22 @@ def _run_canonical_tox(args: Sequence[str]) -> None:
     `tomte tox` CLI takes, fixing the slim-overlay case without breaking
     legacy hand-written tox.ini consumers (which still work because the
     canonical envs are identical there too).
+
+    :param args: tox positional args (e.g. ``("-p", "-e", "black-check", ...)``).
     """
+    # Click typing: `.callback` is `Optional[Callable]`; mypy can't prove non-None
+    # post-decoration. Stripping the ignore here regresses `tox -e mypy`.
     tomte_tox.callback(  # type: ignore[misc]
         repo_root=Path.cwd(),
         show=False,
-        tox_args=tuple(args),
+        tox_args=args,
     )
 
 
 @click.command()
 def format_code() -> None:
     """Run code formatters sequentially: isort and black."""
-    _run_canonical_tox(["-e", "isort", "-e", "black"])
+    _run_canonical_tox(("-e", "isort", "-e", "black"))
 
 
 @click.command()
@@ -61,7 +65,7 @@ def format_copyright(author: Tuple[str, ...], exclude_part: Tuple[str, ...], sca
 def check_code() -> None:
     """Run code checks in parallel: black, isort, flake8, mypy, pylint, and darglint."""
     _run_canonical_tox(
-        [
+        (
             "-p",
             "-e", "black-check",
             "-e", "isort-check",
@@ -69,14 +73,14 @@ def check_code() -> None:
             "-e", "mypy",
             "-e", "pylint",
             "-e", "darglint",
-        ]
+        )
     )
 
 
 @click.command()
 def check_security() -> None:
     """Run security checks in parallel: safety and bandit."""
-    _run_canonical_tox(["-p", "-e", "safety", "-e", "bandit"])
+    _run_canonical_tox(("-p", "-e", "safety", "-e", "bandit"))
 
 
 @click.command()
