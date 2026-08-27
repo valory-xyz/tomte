@@ -57,6 +57,12 @@ drop-in replacement: `tomte tox -e <env>`.
 `upstream_pins`, `gitleaks_extra_paths`, `gitleaks_extra_regexes`,
 `tomte_dep_pin`. Most defaults auto-derive from `packages.json`.
 
+`service_public_id` takes a single public id or a list of them, and
+`[testenv:analyse-service]` runs `autonomy analyse service` once per
+entry. Left undeclared, it defaults to every service in `packages.json`;
+in a repo with no services the env is not rendered at all, so
+`tomte tox -e analyse-service` there reports an unknown environment.
+
 **Per-repo settings in `[tomte-extensions]`** (raw INI in local `tox.ini`,
 for things that don't fit cleanly in TOML): `extra_deps`,
 `extra_pylint_disables`, `extra_pylint_ignored_modules`,
