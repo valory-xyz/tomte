@@ -169,16 +169,11 @@ def third_party_package_names(repo_root: Path) -> List[str]:
     return sorted(names)
 
 
-def discover_service_public_id(repo_root: Path) -> Optional[str]:
-    """Single-service repos: return `<author>/<name>` from `packages.json`.
-
-    Used for `autonomy analyse service`. If the repo has zero or multiple
-    services, returns None — the caller should require the consumer to
-    declare it explicitly.
-    """
+def discover_service_public_ids(repo_root: Path) -> List[str]:
+    """`<author>/<name>` for every dev service in `packages.json`, sorted and deduplicated."""
     data = load_packages_json(repo_root)
     if data is None:
-        return None
+        return []
     services = []
     for key in data.get("dev", {}):
         parsed = _parse_key(key)
@@ -187,6 +182,5 @@ def discover_service_public_id(repo_root: Path) -> Optional[str]:
         pkg_type, author, name = parsed
         if pkg_type == "service":
             services.append(f"{author}/{name}")
-    if len(services) == 1:
-        return services[0]
-    return None
+    # Two versions of one service are one thing to analyse.
+    return sorted(set(services))

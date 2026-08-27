@@ -35,7 +35,7 @@ from tomte.configs import GITLEAKS_TOML, TOX_INI
 from tomte.tools.packages_json import (
     dev_package_paths,
     dev_package_test_paths,
-    discover_service_public_id,
+    discover_service_public_ids,
     load_packages_json,
     third_party_package_names,
 )
@@ -47,6 +47,8 @@ _KNOWN_FIRST_PARTY = "autonomy"
 
 # Multi-line continuation values need re-indenting after configparser strip.
 _DEPS_INDENT = 4
+
+_ANALYSE_SERVICE_ENV = "testenv:analyse-service"
 
 # Filename for the rendered tox.ini in the consuming repo. Hidden so a
 # stray `ls` doesn't surprise people; deterministic so the wrapper can
@@ -294,6 +296,53 @@ def _resolve_service_specific_packages(
     if isinstance(extra, str):
         extra = [extra]
     return base + [e for e in extra if e not in base]
+
+
+def _resolve_service_public_ids(
+    repo_root: Path, identity: Dict[str, Any]
+) -> List[str]:
+    """Services to analyse: `service_public_id` (str or list), else every one found."""
+    explicit = identity.get("service_public_id")
+    if not explicit:
+        return discover_service_public_ids(repo_root)
+    declared = [explicit] if isinstance(explicit, str) else explicit
+    if not isinstance(declared, list):
+        raise click.UsageError(
+            f"[tool.tomte] service_public_id must be a string or a list of "
+            f"strings, got {type(explicit).__name__}."
+        )
+    for index, public_id in enumerate(declared):
+        # A blank entry renders `--public-id` with no value, which tox turns
+        # into `--public-id --skip-warnings` — the bug this env once had.
+        if not isinstance(public_id, str) or not public_id.strip():
+            raise click.UsageError(
+                f"[tool.tomte] service_public_id entry {index} is empty or not "
+                f"a string ({public_id!r}); expected an `<author>/<name>` public id."
+            )
+    return [public_id.strip() for public_id in declared]
+
+
+def _render_analyse_service_commands(service_public_ids: Sequence[str]) -> str:
+    return _reindent(
+        "\n".join(
+            f"autonomy analyse service --public-id {pid} --skip-warnings"
+            for pid in service_public_ids
+        ),
+        _DEPS_INDENT,
+    )
+
+
+def _drop_ini_section(text: str, section: str) -> str:
+    """Return `text` without `[<section>]` and the lines that follow it."""
+    out: List[str] = []
+    dropping = False
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            dropping = stripped[1:-1] == section
+        if not dropping:
+            out.append(line)
+    return "".join(out)
 
 
 def _resolve_versions(
@@ -619,12 +668,6 @@ def _build_substitutions(
 
     upstream_pins = _resolve_upstream_pins(autonomy_version, aea_version, identity)
 
-    service_public_id = (
-        identity.get("service_public_id")
-        or discover_service_public_id(repo_root)
-        or ""
-    )
-
     pytest_targets = _resolve_pytest_targets(repo_root, identity)
     service_specific_packages = _resolve_service_specific_packages(
         repo_root, identity
@@ -639,7 +682,9 @@ def _build_substitutions(
         "SKILLS_PATHS": skills_paths,
         "SERVICE_SPECIFIC_PACKAGES": _join_listish(service_specific_packages),
         "KNOWN_FIRST_PARTY": _KNOWN_FIRST_PARTY,
-        "SERVICE_PUBLIC_ID": service_public_id,
+        "ANALYSE_SERVICE_COMMANDS": _render_analyse_service_commands(
+            _resolve_service_public_ids(repo_root, identity)
+        ),
         "PYTEST_TARGETS": _join_listish(pytest_targets),
         "UPSTREAM_PINS": upstream_pins,
         "CHECK_HANDLERS_IGNORES": _resolve_check_handlers_ignores(
@@ -664,6 +709,9 @@ def _render(
 ) -> str:
     template_text = TOX_INI.read_text(encoding="utf-8")
     substitutions = _build_substitutions(repo_root, pyproject, identity, extensions)
+    # An empty `commands` is a passing no-op in tox, not a skipped env.
+    if not substitutions["ANALYSE_SERVICE_COMMANDS"]:
+        template_text = _drop_ini_section(template_text, _ANALYSE_SERVICE_ENV)
     try:
         return Template(template_text).substitute(substitutions)
     except KeyError as exc:
