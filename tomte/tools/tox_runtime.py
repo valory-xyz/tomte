@@ -49,18 +49,34 @@ _KNOWN_FIRST_PARTY = "autonomy"
 #
 # These are scoped to vulnerabilities in the *scanner's own dependency tree*,
 # which `safety check` reports because it scans the site-packages of the env it
-# runs in. A consuming repo has no way to upgrade them, and failing every
-# repo's CI over a transitive dependency of the linter is noise rather than
-# signal. Anything in a consuming repo's own tree still fails the scan.
+# runs in. Anything in a consuming repo's own tree still fails the scan.
 #
-# Each entry states the package, why no upgrade is available, and what has to
-# become true to drop it. Entries are reviewed when the safety pin moves.
+# An entry is only justified when the vulnerable code is unreachable, not
+# merely unpatched. Unavailability of a fix is a reason the entry cannot be
+# retired yet; it is not on its own a reason to add one. Each entry records,
+# in this order:
+#
+#   1. why the package is present at all
+#   2. why the vulnerable code path cannot be reached from the scan
+#   3. what has to become true to drop the entry
+#
+# Entries are reviewed when the safety pin moves.
 _FLEET_SAFETY_IGNORES: Dict[str, str] = {
-    # safety 3.7.0 requires `nltk>=3.9` with no upper bound, so it installs
-    # 3.10.3. The advisory covers <=3.10.3 and 3.10.3 is the latest release on
-    # PyPI, so there is no patched version to resolve to. Drop once safety
-    # constrains nltk or a fixed nltk ships.
-    "SFTY-20260902-58666": "nltk, a dependency of safety itself; no patched release exists",
+    # Present because safety 3.7.0 requires `nltk>=3.9` with no upper bound,
+    # so it installs 3.10.3. Not in tomte's dependencies, nor any consuming
+    # repo's: it exists only inside the CI virtualenv that runs the scan.
+    #
+    # Unreachable because the advisory is a path traversal through built-in
+    # `open()` on caller-controlled paths, and the only call into nltk
+    # anywhere in safety is `nltk.edit_distance(pkg, package_name)` in
+    # safety/tool/typosquatting.py — two strings in, an integer out, no file
+    # access. The module is imported when the CLI loads, but importing a
+    # library does not invoke its sink, and the inputs are the scanning
+    # machine's own installed package names.
+    #
+    # Drop once safety constrains nltk, or once a fixed nltk ships: 3.10.3 is
+    # currently the latest release, so there is nothing to resolve to.
+    "SFTY-20260902-58666": "nltk, a dependency of safety itself; vulnerable path unreachable",
 }
 
 # Multi-line continuation values need re-indenting after configparser strip.

@@ -11,11 +11,13 @@
 # Ignores are therefore passed as `--ignore` flags, rendered by `tomte tox`:
 #   * the fleet baseline lives in `_FLEET_SAFETY_IGNORES` in
 #     tomte/tools/tox_runtime.py, and covers advisories in the scanner's own
-#     dependency tree, which a consuming repo cannot upgrade
+#     dependency tree, each justified by why the vulnerable code cannot be
+#     reached from the scan
 #   * a repo adds its own with `safety_ignores` in `[tool.tomte]`
 #
-# The fleet's baseline remains "fail on any unfixed CVE" in the repo's own
-# dependency tree.
+# "No fix is available" is a reason an ignore cannot be retired yet, not a
+# reason to add one. The fleet's baseline remains "fail on any unfixed CVE"
+# in the repo's own dependency tree.
 
 security:
   ignore-vulnerabilities: {}

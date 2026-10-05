@@ -63,8 +63,12 @@ drop-in replacement: `tomte tox -e <env>`.
 `_FLEET_SAFETY_IGNORES`. They are flags rather than entries in the shipped
 policy file because safety's `check` validates policy ignore keys as
 positive integers and rejects the `SFTY-<date>-<n>` form advisories now
-carry. Use it only for advisories a repo genuinely cannot resolve; the
-default remains "fail on any unfixed CVE".
+carry.
+
+Add an entry only when the vulnerable code is unreachable from the scan,
+and record why alongside it. An unavailable fix is a reason an entry
+cannot be retired yet, not a reason to add one. The default remains "fail
+on any unfixed CVE" in the repo's own dependency tree.
 
 `service_public_id` takes a single public id or a list of them, and
 `[testenv:analyse-service]` runs `autonomy analyse service` once per
