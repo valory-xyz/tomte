@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from string import Template
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
@@ -45,48 +46,22 @@ from tomte.tools.packages_json import (
 # moved here because they never vary across consumers downstream of OA.
 _KNOWN_FIRST_PARTY = "autonomy"
 
-# Advisories the fleet-wide safety scan allowlists, as `--ignore` values.
+# Advisories in the safety scanner's own dependency tree, passed to the scan
+# as `--ignore` flags, each mapped to the date its entry must be re-justified
+# by. `[testenv:safety]` installs only safety, so its env holds nothing else
+# (see https://github.com/valory-xyz/tomte/issues/61). The rule for adding an
+# entry is in the README.
 #
-# Scoped to vulnerabilities in the *scanner's own dependency tree*. `safety
-# check` scans the site-packages of the env it runs in, and because
-# [testenv:safety] sets `skip_install = True` and installs only safety itself,
-# that env holds nothing but the scanner. These entries exist so an advisory
-# against the scanner does not fail every repo's CI.
-#
-# They are not a statement that the scan is adequate. It currently sees only
-# the scanner, so it reports nothing about the consuming repo's own
-# dependencies: see https://github.com/valory-xyz/tomte/issues/61. Fixing the
-# scan's target is what makes this list unnecessary; until then it is the
-# difference between a red CI and a green one, not between a scanned repo and
-# an unscanned one.
-#
-# An entry is only justified when the vulnerable code is unreachable, not
-# merely unpatched. Unavailability of a fix is a reason the entry cannot be
-# retired yet; it is not on its own a reason to add one. Each entry records,
-# in this order:
-#
-#   1. why the package is present at all
-#   2. why the vulnerable code path cannot be reached from the scan
-#   3. what has to become true to drop the entry
-#
-# Entries are reviewed when the safety pin moves.
-_FLEET_SAFETY_IGNORES: Dict[str, str] = {
-    # Present because safety 3.7.0 requires `nltk>=3.9` with no upper bound,
-    # so it installs 3.10.3. Not in tomte's dependencies, nor any consuming
-    # repo's: it exists only inside the CI virtualenv that runs the scan.
-    #
-    # Unreachable because the advisory is a path traversal through built-in
-    # `open()` on caller-controlled paths, and the only call into nltk
-    # anywhere in safety is `nltk.edit_distance(pkg, package_name)` in
-    # safety/tool/typosquatting.py — two strings in, an integer out, no file
-    # access. The module is imported when the CLI loads, but importing a
-    # library does not invoke its sink, and the inputs are the scanning
-    # machine's own installed package names.
-    #
-    # Drop once safety constrains nltk, or once a fixed nltk ships: 3.10.3 is
-    # currently the latest release, so there is nothing to resolve to.
-    "SFTY-20260902-58666": "nltk, a dependency of safety itself; vulnerable path unreachable",
+# safety looks ids up verbatim and says nothing when one matches no advisory,
+# so a mistyped id is a silent no-op and the scan fails as if it were absent.
+_FLEET_SAFETY_IGNORES: Dict[str, date] = {
+    # nltk, required by safety. Drop when the scan passes without it.
+    "SFTY-20260902-58666": date(2027, 1, 5),
 }
+
+# What an advisory id may contain. Ids are rendered into a tox command line,
+# where whitespace starts a new argument and braces are substitution syntax.
+_SAFETY_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Multi-line continuation values need re-indenting after configparser strip.
 _DEPS_INDENT = 4
@@ -294,30 +269,32 @@ def _render_pylint_flags(extensions: Dict[str, str], identity: Dict[str, Any]) -
 
 
 def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
-    """`--ignore <id>` flags for `safety check`.
-
-    The fleet baseline in `_FLEET_SAFETY_IGNORES` is always applied; a repo
-    adds its own with `safety_ignores` in `[tool.tomte]`, as a list of
-    advisory ids. Duplicates collapse and order is stable, so the rendered
-    config does not churn between runs.
-
-    These are command-line flags rather than entries in the shipped policy
-    file because safety 3.7.0's `check` validates policy ignore keys as
-    positive integers and rejects the `SFTY-<date>-<n>` form advisories are
-    published under, so the policy file cannot express a modern advisory at
-    all.
-
-    :param identity: the `[tool.tomte]` section.
-    :return: the flags, space-joined, or an empty string.
-    """
-    ids: List[str] = list(_FLEET_SAFETY_IGNORES)
+    """`--ignore <id>` flags: the fleet baseline, then `safety_ignores` (str or list)."""
     explicit = identity.get("safety_ignores")
-    if isinstance(explicit, str):
-        explicit = [explicit]
-    for advisory in explicit or []:
-        advisory = str(advisory).strip()
-        if advisory and advisory not in ids:
-            ids.append(advisory)
+    if explicit is None:
+        declared: List[Any] = []
+    elif isinstance(explicit, str):
+        declared = [explicit]
+    elif isinstance(explicit, list):
+        declared = explicit
+    else:
+        raise click.UsageError(
+            f"[tool.tomte] safety_ignores must be a string or a list of "
+            f"strings, got {type(explicit).__name__}."
+        )
+    ids: List[str] = list(_FLEET_SAFETY_IGNORES)
+    for index, advisory in enumerate(declared):
+        # Rendered into a command line, so an id carrying a space would add
+        # arguments to the scan rather than name an advisory.
+        if not isinstance(advisory, str) or not _SAFETY_ID_PATTERN.match(
+            advisory.strip()
+        ):
+            raise click.UsageError(
+                f"[tool.tomte] safety_ignores entry {index} is not an advisory "
+                f"id ({advisory!r}); expected letters, digits, `-` and `_` only."
+            )
+        if advisory.strip() not in ids:
+            ids.append(advisory.strip())
     return " ".join(f"--ignore {advisory}" for advisory in ids)
 
 

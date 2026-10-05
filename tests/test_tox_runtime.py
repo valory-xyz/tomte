@@ -33,7 +33,9 @@ sidecar marker safety).
 from __future__ import annotations
 
 import json
+import re
 import textwrap
+from datetime import date
 from pathlib import Path
 from typing import List, Sequence
 
@@ -44,6 +46,7 @@ from click.testing import CliRunner
 from tomte.tools.tox_runtime import (
     _FLEET_SAFETY_IGNORES,
     _MANAGED_MARKER,
+    _SAFETY_ID_PATTERN,
     _drop_ini_section,
     _render_gitleaks_merged,
     _render_pylint_flags,
@@ -211,63 +214,106 @@ def test_render_pylint_flags_identity_list_form() -> None:
 # --------------------------------------------------------------------------
 
 
+def _ignore_flags(*ids: str) -> str:
+    """The flags the resolver should render for the baseline followed by `ids`."""
+    return " ".join(f"--ignore {a}" for a in [*_FLEET_SAFETY_IGNORES, *ids])
+
+
 def test_safety_ignores_always_applies_the_fleet_baseline() -> None:
-    """The baseline covers advisories in the scanner's own dependency tree.
-
-    Without it every consuming repo's CI fails on a transitive dependency of
-    the linter that the repo has no way to upgrade.
-    """
-    rendered = _resolve_safety_ignores(identity={})
-    for advisory in _FLEET_SAFETY_IGNORES:
-        assert f"--ignore {advisory}" in rendered
+    """Without it every repo's CI fails on an advisory in the scanner itself."""
+    assert _resolve_safety_ignores(identity={}) == _ignore_flags()
 
 
-def test_safety_ignores_is_never_empty_while_a_baseline_exists() -> None:
-    """An empty render would silently drop the baseline from the command."""
-    assert bool(_resolve_safety_ignores(identity={})) == bool(_FLEET_SAFETY_IGNORES)
-
-
-def test_safety_ignores_appends_repo_additions() -> None:
-    """A repo extends the baseline rather than replacing it."""
-    rendered = _resolve_safety_ignores(
-        identity={"safety_ignores": ["SFTY-19700101-00001"]}
-    )
-    assert "--ignore SFTY-19700101-00001" in rendered
-    for advisory in _FLEET_SAFETY_IGNORES:
-        assert f"--ignore {advisory}" in rendered
+def test_safety_ignores_appends_repo_additions_in_declared_order() -> None:
+    """A repo extends the baseline; neither list is reordered."""
+    ids = ["SFTY-19700101-00002", "SFTY-19700101-00001"]
+    rendered = _resolve_safety_ignores({"safety_ignores": ids})
+    assert rendered == _ignore_flags(*ids)
 
 
 def test_safety_ignores_accepts_a_bare_string() -> None:
     """A single id is the common case and should not need a list."""
-    rendered = _resolve_safety_ignores(identity={"safety_ignores": "SFTY-19700101-00001"})
-    assert "--ignore SFTY-19700101-00001" in rendered
+    rendered = _resolve_safety_ignores({"safety_ignores": "SFTY-19700101-00001"})
+    assert rendered == _ignore_flags("SFTY-19700101-00001")
 
 
-def test_safety_ignores_does_not_repeat_a_baseline_entry() -> None:
-    """A repo naming a baseline id must not emit the flag twice."""
-    advisory = next(iter(_FLEET_SAFETY_IGNORES))
-    rendered = _resolve_safety_ignores(identity={"safety_ignores": [advisory]})
-    assert rendered.count(f"--ignore {advisory}") == 1
+def test_safety_ignores_does_not_repeat_an_id() -> None:
+    """Naming a baseline id, or one id twice, must not emit a flag twice."""
+    baseline = next(iter(_FLEET_SAFETY_IGNORES))
+    rendered = _resolve_safety_ignores(
+        {"safety_ignores": [baseline, "SFTY-19700101-00001", "SFTY-19700101-00001"]}
+    )
+    assert rendered == _ignore_flags("SFTY-19700101-00001")
 
 
-@pytest.mark.parametrize("value", [None, [], "", ["  "], [""]])
-def test_safety_ignores_ignores_empty_additions(value: object) -> None:
-    """Blank entries must not render a flag with no argument.
+def test_safety_ignores_strips_surrounding_whitespace() -> None:
+    """Padding is not part of the id, and would render as a stray space."""
+    rendered = _resolve_safety_ignores({"safety_ignores": [" SFTY-19700101-00001 "]})
+    assert rendered == _ignore_flags("SFTY-19700101-00001")
 
-    `--ignore` with an empty value would consume the next token, so a stray
-    empty string in the list silently eats part of the command.
+
+@pytest.mark.parametrize("value", [None, []])
+def test_safety_ignores_with_nothing_declared_is_the_baseline(value: object) -> None:
+    """An absent key and an empty list both mean no additions."""
+    assert _resolve_safety_ignores({"safety_ignores": value}) == _ignore_flags()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [5, 0, True, False, 1.5, {"SFTY-19700101-00001": "reason"}, ("SFTY-19700101-00001",)],
+)
+def test_safety_ignores_rejects_a_value_of_the_wrong_type(value: object) -> None:
+    """A table would otherwise iterate as its keys and be accepted silently."""
+    with pytest.raises(click.UsageError, match="safety_ignores must be a string or a list"):
+        _resolve_safety_ignores({"safety_ignores": value})
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "",
+        "   ",
+        5,
+        None,
+        ["SFTY-19700101-00001"],
+        {"id": "SFTY-19700101-00001"},
+        "SFTY-19700101-00001 --continue-on-error",
+        "SFTY-19700101-00001,SFTY-19700101-00002",
+        "{envsitepackagesdir}",
+        "SFTY-19700101-00001;true",
+    ],
+)
+@pytest.mark.parametrize("position", ["only", "first", "last"])
+def test_safety_ignores_rejects_an_entry_that_is_not_an_id(
+    entry: object, position: str
+) -> None:
+    """Ids land on a command line, so anything else changes what the scan runs.
+
+    A space starts a new argument, a comma is safety's own id separator, and
+    braces are tox substitution syntax. None of them may reach the render,
+    wherever in the list they sit.
     """
-    rendered = _resolve_safety_ignores(identity={"safety_ignores": value})
-    assert "--ignore \n" not in rendered
-    assert not rendered.endswith("--ignore")
-    assert "--ignore  " not in rendered
-    assert rendered == _resolve_safety_ignores(identity={})
+    good = "SFTY-19700101-00009"
+    declared = {"only": [entry], "first": [entry, good], "last": [good, entry]}[position]
+    with pytest.raises(click.UsageError, match="safety_ignores entry"):
+        _resolve_safety_ignores({"safety_ignores": declared})
 
 
-def test_safety_ignores_order_is_stable() -> None:
-    """The rendered config must not churn between runs."""
-    identity = {"safety_ignores": ["SFTY-19700101-00002", "SFTY-19700101-00001"]}
-    assert _resolve_safety_ignores(identity) == _resolve_safety_ignores(identity)
+def test_fleet_safety_ignores_are_well_formed_ids() -> None:
+    """safety is silent about an id that matches nothing, so a typo hides here."""
+    for advisory in _FLEET_SAFETY_IGNORES:
+        assert _SAFETY_ID_PATTERN.match(advisory), advisory
+
+
+def test_fleet_safety_ignores_are_not_past_their_review_date() -> None:
+    """Flags passed on the command line carry no expiry, so this is the expiry.
+
+    Fails once an entry's date has passed. Re-check that the vulnerable code
+    is still unreachable and that no fixed release exists, then either remove
+    the entry or move its date forward.
+    """
+    overdue = {a: d for a, d in _FLEET_SAFETY_IGNORES.items() if d < date.today()}
+    assert not overdue, f"fleet safety ignores past their review date: {overdue}"
 
 
 # --------------------------------------------------------------------------
@@ -378,27 +424,23 @@ def test_tomte_tox_show_renders_canonical_blocks(tmp_path: Path) -> None:
     assert "open-aea-ledger-ethereum==2.2.1" in out
 
 
+def _section(rendered: str, name: str) -> str:
+    """Return the body of `[name]` from a rendered tox.ini, up to the next header."""
+    match = re.search(
+        rf"^\[{re.escape(name)}\]\n(.*?)(?=^\[|\Z)", rendered, re.MULTILINE | re.DOTALL
+    )
+    assert match, f"[{name}] is missing from the rendered tox.ini"
+    return match.group(1)
+
+
 def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
     tmp_path: Path,
 ) -> None:
-    """The baseline has to reach the rendered command, not just the resolver.
+    """The flags have to reach the rendered command, not just the resolver.
 
     Dropping `$SAFETY_IGNORES` from the canonical tox.ini leaves every
-    `_resolve_safety_ignores` test passing while the scan runs without the
-    flags, so the assertion belongs on the rendered output.
+    `_resolve_safety_ignores` test passing while the scan runs without them.
     """
-    _write_repo_skeleton(tmp_path)
-    runner = CliRunner()
-    result = runner.invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
-    assert result.exit_code == 0, result.output
-    safety_block = result.output.split("[testenv:safety]", 1)[1].split("[testenv:", 1)[0]
-    assert "safety check --policy-file" in safety_block
-    for advisory in _FLEET_SAFETY_IGNORES:
-        assert f"--ignore {advisory}" in safety_block
-
-
-def test_tomte_tox_show_renders_repo_safety_ignores(tmp_path: Path) -> None:
-    """A repo's own `safety_ignores` reach the scan command too."""
     _write_repo_skeleton(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
@@ -406,11 +448,31 @@ def test_tomte_tox_show_renders_repo_safety_ignores(tmp_path: Path) -> None:
         + '\nsafety_ignores = ["SFTY-19700101-00001"]\n',
         encoding="utf-8",
     )
-    runner = CliRunner()
-    result = runner.invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
+    result = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
     assert result.exit_code == 0, result.output
-    safety_block = result.output.split("[testenv:safety]", 1)[1].split("[testenv:", 1)[0]
-    assert "--ignore SFTY-19700101-00001" in safety_block
+    scan = [
+        line.strip()
+        for line in _section(result.output, "testenv:safety").splitlines()
+        if line.strip().startswith("safety check")
+    ]
+    assert scan == [
+        "safety check --policy-file "
+        "{envsitepackagesdir}/tomte/configs/safety-policy.yml "
+        + _ignore_flags("SFTY-19700101-00001")
+    ]
+
+
+def test_tomte_tox_reports_a_bad_safety_ignore_as_a_usage_error(tmp_path: Path) -> None:
+    """A bad entry stops the run with the key named, rather than a traceback."""
+    _write_repo_skeleton(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8") + "\nsafety_ignores = 5\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
+    assert result.exit_code != 0
+    assert "safety_ignores" in result.output
 
 
 def test_tomte_tox_show_propagates_extensions(tmp_path: Path) -> None:

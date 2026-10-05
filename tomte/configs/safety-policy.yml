@@ -3,25 +3,21 @@
 # Repos consume this via:
 #   safety check --policy-file $(python -c "from tomte.configs import SAFETY_POLICY; print(SAFETY_POLICY)")
 #
-# The allowlist here stays empty, and not because nothing is ever ignored:
-# safety 3.7.0's `check` validates `ignore-vulnerabilities` keys as positive
-# integers and rejects the `SFTY-<date>-<n>` form advisories are published
-# under, so a policy file cannot express a current advisory at all.
+# `ignore-vulnerabilities` below is inert, and adding entries to it does
+# nothing, for two reasons:
 #
-# Ignores are therefore passed as `--ignore` flags, rendered by `tomte tox`:
-#   * the fleet baseline lives in `_FLEET_SAFETY_IGNORES` in
-#     tomte/tools/tox_runtime.py, and covers advisories in the scanner's own
-#     dependency tree, each justified by why the vulnerable code cannot be
-#     reached from the scan
-#   * a repo adds its own with `safety_ignores` in `[tool.tomte]`
+#   * safety's `check` validates its keys as positive integers and rejects the
+#     `SFTY-<date>-<n>` form advisories are published under
+#   * safety reads it only when no `--ignore` flag is given, and `tomte tox`
+#     always passes the fleet baseline as flags
 #
-# "No fix is available" is a reason an ignore cannot be retired yet, not a
-# reason to add one.
+# Ignores are therefore `--ignore` flags rendered by `tomte tox`: the fleet
+# baseline in `_FLEET_SAFETY_IGNORES` (tomte/tools/tox_runtime.py) plus a
+# repo's own `safety_ignores` in `[tool.tomte]`.
 #
-# Note on coverage: [testenv:safety] sets `skip_install = True`, so the scan
-# currently inspects only the scanner's own virtualenv and reports nothing
-# about the consuming repo's dependencies. Tracked in
-# https://github.com/valory-xyz/tomte/issues/61.
+# Coverage: [testenv:safety] installs only safety, so the scan inspects the
+# scanner's own virtualenv and reports nothing about the consuming repo's
+# dependencies. Tracked in https://github.com/valory-xyz/tomte/issues/61.
 
 security:
   ignore-vulnerabilities: {}

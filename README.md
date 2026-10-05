@@ -58,17 +58,11 @@ drop-in replacement: `tomte tox -e <env>`.
 `safety_ignores`, `tomte_dep_pin`. Most defaults auto-derive from
 `packages.json`.
 
-`safety_ignores` takes a list of advisory ids and renders them as
-`--ignore` flags on the `safety` scan, on top of the fleet baseline in
-`_FLEET_SAFETY_IGNORES`. They are flags rather than entries in the shipped
-policy file because safety's `check` validates policy ignore keys as
-positive integers and rejects the `SFTY-<date>-<n>` form advisories now
-carry.
-
-Add an entry only when the vulnerable code is unreachable from the scan,
-and record why alongside it. An unavailable fix is a reason an entry
-cannot be retired yet, not a reason to add one. The default remains "fail
-on any unfixed CVE" in the repo's own dependency tree.
+`safety_ignores` takes an advisory id or a list of them and renders them
+as `--ignore` flags on the `safety` scan, after the fleet baseline in
+`_FLEET_SAFETY_IGNORES`. Add an entry only when the vulnerable code is
+unreachable from the scan, and record why alongside it. An unavailable
+fix is a reason an entry cannot be retired yet, not a reason to add one.
 
 `service_public_id` takes a single public id or a list of them, and
 `[testenv:analyse-service]` runs `autonomy analyse service` once per
