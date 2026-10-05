@@ -47,9 +47,18 @@ _KNOWN_FIRST_PARTY = "autonomy"
 
 # Advisories the fleet-wide safety scan allowlists, as `--ignore` values.
 #
-# These are scoped to vulnerabilities in the *scanner's own dependency tree*,
-# which `safety check` reports because it scans the site-packages of the env it
-# runs in. Anything in a consuming repo's own tree still fails the scan.
+# Scoped to vulnerabilities in the *scanner's own dependency tree*. `safety
+# check` scans the site-packages of the env it runs in, and because
+# [testenv:safety] sets `skip_install = True` and installs only safety itself,
+# that env holds nothing but the scanner. These entries exist so an advisory
+# against the scanner does not fail every repo's CI.
+#
+# They are not a statement that the scan is adequate. It currently sees only
+# the scanner, so it reports nothing about the consuming repo's own
+# dependencies: see https://github.com/valory-xyz/tomte/issues/61. Fixing the
+# scan's target is what makes this list unnecessary; until then it is the
+# difference between a red CI and a green one, not between a scanned repo and
+# an unscanned one.
 #
 # An entry is only justified when the vulnerable code is unreachable, not
 # merely unpatched. Unavailability of a fix is a reason the entry cannot be

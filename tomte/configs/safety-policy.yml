@@ -16,8 +16,12 @@
 #   * a repo adds its own with `safety_ignores` in `[tool.tomte]`
 #
 # "No fix is available" is a reason an ignore cannot be retired yet, not a
-# reason to add one. The fleet's baseline remains "fail on any unfixed CVE"
-# in the repo's own dependency tree.
+# reason to add one.
+#
+# Note on coverage: [testenv:safety] sets `skip_install = True`, so the scan
+# currently inspects only the scanner's own virtualenv and reports nothing
+# about the consuming repo's dependencies. Tracked in
+# https://github.com/valory-xyz/tomte/issues/61.
 
 security:
   ignore-vulnerabilities: {}
