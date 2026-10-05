@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from string import Template
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
@@ -44,6 +45,22 @@ from tomte.tools.packages_json import (
 # Hardcoded fleet-wide constants. Previously per-repo `[tool.tomte]` keys;
 # moved here because they never vary across consumers downstream of OA.
 _KNOWN_FIRST_PARTY = "autonomy"
+
+# Advisories in the safety scanner's own dependency tree, passed to the scan
+# as `--ignore` flags, each mapped to the date its entry must be re-justified
+# by. `[testenv:safety]` installs only safety, so its env holds nothing else.
+# The rule for adding an entry is in the README.
+#
+# safety looks ids up verbatim and says nothing when one matches no advisory,
+# so a mistyped id is a silent no-op and the scan fails as if it were absent.
+_FLEET_SAFETY_IGNORES: Dict[str, date] = {
+    # nltk, required by safety. Drop when the scan passes without it.
+    "SFTY-20260902-58666": date(2027, 1, 5),
+}
+
+# What an advisory id may contain. Ids are rendered into a tox command line,
+# where whitespace starts a new argument and braces are substitution syntax.
+_SAFETY_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Multi-line continuation values need re-indenting after configparser strip.
 _DEPS_INDENT = 4
@@ -248,6 +265,33 @@ def _render_pylint_flags(extensions: Dict[str, str], identity: Dict[str, Any]) -
     if raw_disables:
         flags.append(f"--disable={raw_disables}")
     return " ".join(flags)
+
+
+def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
+    """`--ignore <id>` flags: the fleet baseline, then `safety_ignores`."""
+    explicit = identity.get("safety_ignores")
+    if explicit is None:
+        declared: List[Any] = []
+    elif isinstance(explicit, str):
+        declared = [explicit]
+    elif isinstance(explicit, list):
+        declared = explicit
+    else:
+        raise click.UsageError(
+            f"[tool.tomte] safety_ignores must be a string or a list of "
+            f"strings, got {type(explicit).__name__}."
+        )
+    ids: List[str] = list(_FLEET_SAFETY_IGNORES)
+    for index, entry in enumerate(declared):
+        advisory = entry.strip() if isinstance(entry, str) else ""
+        if not _SAFETY_ID_PATTERN.match(advisory):
+            raise click.UsageError(
+                f"[tool.tomte] safety_ignores entry {index} is not an advisory "
+                f"id ({entry!r}); expected letters, digits, `-` and `_` only."
+            )
+        if advisory not in ids:
+            ids.append(advisory)
+    return " ".join(f"--ignore {advisory}" for advisory in ids)
 
 
 def _join_listish(value: Union[str, Sequence[str]]) -> str:
@@ -693,6 +737,7 @@ def _build_substitutions(
         "CHECK_DEPENDENCIES_EXTRA_EXCLUDES": _resolve_check_dependencies_extra_excludes(
             identity
         ),
+        "SAFETY_IGNORES": _resolve_safety_ignores(identity),
         "EXTRA_DEPS_PACKAGES": _reindent(
             _resolve_extra_deps(pyproject, extensions), _DEPS_INDENT
         ),

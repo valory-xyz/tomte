@@ -3,9 +3,21 @@
 # Repos consume this via:
 #   safety check --policy-file $(python -c "from tomte.configs import SAFETY_POLICY; print(SAFETY_POLICY)")
 #
-# Vulnerability allowlist — repos extend with their own ignores by
-# composing a per-repo policy file when needed. The fleet's baseline is
-# "fail on any unfixed CVE", so this list stays empty by default.
+# `ignore-vulnerabilities` below is inert, and adding entries to it does
+# nothing, for two reasons:
+#
+#   * safety's `check` validates its keys as positive integers and rejects the
+#     `SFTY-<date>-<n>` form advisories are published under
+#   * safety reads it only when no `--ignore` flag is given, and `tomte tox`
+#     always passes the fleet baseline as flags
+#
+# Ignores are therefore `--ignore` flags rendered by `tomte tox`: the fleet
+# baseline in `_FLEET_SAFETY_IGNORES` (tomte/tools/tox_runtime.py) plus a
+# repo's own `safety_ignores` in `[tool.tomte]`.
+#
+# Coverage: [testenv:safety] installs only safety, so the scan inspects the
+# scanner's own virtualenv and reports nothing about the consuming repo's
+# dependencies. Tracked in https://github.com/valory-xyz/tomte/issues/61.
 
 security:
   ignore-vulnerabilities: {}

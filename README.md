@@ -55,7 +55,14 @@ drop-in replacement: `tomte tox -e <env>`.
 `known_first_party`, `open_autonomy_version`, `open_aea_version`,
 `check_handlers_ignores`, `check_dependencies_extra_excludes`,
 `upstream_pins`, `gitleaks_extra_paths`, `gitleaks_extra_regexes`,
-`tomte_dep_pin`. Most defaults auto-derive from `packages.json`.
+`safety_ignores`, `tomte_dep_pin`. Most defaults auto-derive from
+`packages.json`.
+
+`safety_ignores` takes an advisory id or a list of them and renders them
+as `--ignore` flags on the `safety` scan, after the fleet baseline in
+`_FLEET_SAFETY_IGNORES`. Add an entry only when the vulnerable code is
+unreachable from the scan, and record why alongside it. An unavailable
+fix is a reason an entry cannot be retired yet, not a reason to add one.
 
 `service_public_id` takes a single public id or a list of them, and
 `[testenv:analyse-service]` runs `autonomy analyse service` once per
