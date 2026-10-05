@@ -55,7 +55,16 @@ drop-in replacement: `tomte tox -e <env>`.
 `known_first_party`, `open_autonomy_version`, `open_aea_version`,
 `check_handlers_ignores`, `check_dependencies_extra_excludes`,
 `upstream_pins`, `gitleaks_extra_paths`, `gitleaks_extra_regexes`,
-`tomte_dep_pin`. Most defaults auto-derive from `packages.json`.
+`safety_ignores`, `tomte_dep_pin`. Most defaults auto-derive from
+`packages.json`.
+
+`safety_ignores` takes a list of advisory ids and renders them as
+`--ignore` flags on the `safety` scan, on top of the fleet baseline in
+`_FLEET_SAFETY_IGNORES`. They are flags rather than entries in the shipped
+policy file because safety's `check` validates policy ignore keys as
+positive integers and rejects the `SFTY-<date>-<n>` form advisories now
+carry. Use it only for advisories a repo genuinely cannot resolve; the
+default remains "fail on any unfixed CVE".
 
 `service_public_id` takes a single public id or a list of them, and
 `[testenv:analyse-service]` runs `autonomy analyse service` once per

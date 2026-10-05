@@ -3,9 +3,19 @@
 # Repos consume this via:
 #   safety check --policy-file $(python -c "from tomte.configs import SAFETY_POLICY; print(SAFETY_POLICY)")
 #
-# Vulnerability allowlist — repos extend with their own ignores by
-# composing a per-repo policy file when needed. The fleet's baseline is
-# "fail on any unfixed CVE", so this list stays empty by default.
+# The allowlist here stays empty, and not because nothing is ever ignored:
+# safety 3.7.0's `check` validates `ignore-vulnerabilities` keys as positive
+# integers and rejects the `SFTY-<date>-<n>` form advisories are published
+# under, so a policy file cannot express a current advisory at all.
+#
+# Ignores are therefore passed as `--ignore` flags, rendered by `tomte tox`:
+#   * the fleet baseline lives in `_FLEET_SAFETY_IGNORES` in
+#     tomte/tools/tox_runtime.py, and covers advisories in the scanner's own
+#     dependency tree, which a consuming repo cannot upgrade
+#   * a repo adds its own with `safety_ignores` in `[tool.tomte]`
+#
+# The fleet's baseline remains "fail on any unfixed CVE" in the repo's own
+# dependency tree.
 
 security:
   ignore-vulnerabilities: {}

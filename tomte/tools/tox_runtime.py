@@ -45,6 +45,24 @@ from tomte.tools.packages_json import (
 # moved here because they never vary across consumers downstream of OA.
 _KNOWN_FIRST_PARTY = "autonomy"
 
+# Advisories the fleet-wide safety scan allowlists, as `--ignore` values.
+#
+# These are scoped to vulnerabilities in the *scanner's own dependency tree*,
+# which `safety check` reports because it scans the site-packages of the env it
+# runs in. A consuming repo has no way to upgrade them, and failing every
+# repo's CI over a transitive dependency of the linter is noise rather than
+# signal. Anything in a consuming repo's own tree still fails the scan.
+#
+# Each entry states the package, why no upgrade is available, and what has to
+# become true to drop it. Entries are reviewed when the safety pin moves.
+_FLEET_SAFETY_IGNORES: Dict[str, str] = {
+    # safety 3.7.0 requires `nltk>=3.9` with no upper bound, so it installs
+    # 3.10.3. The advisory covers <=3.10.3 and 3.10.3 is the latest release on
+    # PyPI, so there is no patched version to resolve to. Drop once safety
+    # constrains nltk or a fixed nltk ships.
+    "SFTY-20260902-58666": "nltk, a dependency of safety itself; no patched release exists",
+}
+
 # Multi-line continuation values need re-indenting after configparser strip.
 _DEPS_INDENT = 4
 
@@ -248,6 +266,34 @@ def _render_pylint_flags(extensions: Dict[str, str], identity: Dict[str, Any]) -
     if raw_disables:
         flags.append(f"--disable={raw_disables}")
     return " ".join(flags)
+
+
+def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
+    """`--ignore <id>` flags for `safety check`.
+
+    The fleet baseline in `_FLEET_SAFETY_IGNORES` is always applied; a repo
+    adds its own with `safety_ignores` in `[tool.tomte]`, as a list of
+    advisory ids. Duplicates collapse and order is stable, so the rendered
+    config does not churn between runs.
+
+    These are command-line flags rather than entries in the shipped policy
+    file because safety 3.7.0's `check` validates policy ignore keys as
+    positive integers and rejects the `SFTY-<date>-<n>` form advisories are
+    published under, so the policy file cannot express a modern advisory at
+    all.
+
+    :param identity: the `[tool.tomte]` section.
+    :return: the flags, space-joined, or an empty string.
+    """
+    ids: List[str] = list(_FLEET_SAFETY_IGNORES)
+    explicit = identity.get("safety_ignores")
+    if isinstance(explicit, str):
+        explicit = [explicit]
+    for advisory in explicit or []:
+        advisory = str(advisory).strip()
+        if advisory and advisory not in ids:
+            ids.append(advisory)
+    return " ".join(f"--ignore {advisory}" for advisory in ids)
 
 
 def _join_listish(value: Union[str, Sequence[str]]) -> str:
@@ -693,6 +739,7 @@ def _build_substitutions(
         "CHECK_DEPENDENCIES_EXTRA_EXCLUDES": _resolve_check_dependencies_extra_excludes(
             identity
         ),
+        "SAFETY_IGNORES": _resolve_safety_ignores(identity),
         "EXTRA_DEPS_PACKAGES": _reindent(
             _resolve_extra_deps(pyproject, extensions), _DEPS_INDENT
         ),

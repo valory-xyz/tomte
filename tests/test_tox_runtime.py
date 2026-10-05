@@ -42,12 +42,14 @@ import pytest
 from click.testing import CliRunner
 
 from tomte.tools.tox_runtime import (
+    _FLEET_SAFETY_IGNORES,
     _MANAGED_MARKER,
     _drop_ini_section,
     _render_gitleaks_merged,
     _render_pylint_flags,
     _resolve_check_handlers_ignores,
     _resolve_pytest_targets,
+    _resolve_safety_ignores,
     _resolve_service_public_ids,
     _resolve_service_specific_packages,
     tomte_tox,
@@ -205,6 +207,70 @@ def test_render_pylint_flags_identity_list_form() -> None:
 
 
 # --------------------------------------------------------------------------
+# _resolve_safety_ignores
+# --------------------------------------------------------------------------
+
+
+def test_safety_ignores_always_applies_the_fleet_baseline() -> None:
+    """The baseline covers advisories in the scanner's own dependency tree.
+
+    Without it every consuming repo's CI fails on a transitive dependency of
+    the linter that the repo has no way to upgrade.
+    """
+    rendered = _resolve_safety_ignores(identity={})
+    for advisory in _FLEET_SAFETY_IGNORES:
+        assert f"--ignore {advisory}" in rendered
+
+
+def test_safety_ignores_is_never_empty_while_a_baseline_exists() -> None:
+    """An empty render would silently drop the baseline from the command."""
+    assert bool(_resolve_safety_ignores(identity={})) == bool(_FLEET_SAFETY_IGNORES)
+
+
+def test_safety_ignores_appends_repo_additions() -> None:
+    """A repo extends the baseline rather than replacing it."""
+    rendered = _resolve_safety_ignores(
+        identity={"safety_ignores": ["SFTY-19700101-00001"]}
+    )
+    assert "--ignore SFTY-19700101-00001" in rendered
+    for advisory in _FLEET_SAFETY_IGNORES:
+        assert f"--ignore {advisory}" in rendered
+
+
+def test_safety_ignores_accepts_a_bare_string() -> None:
+    """A single id is the common case and should not need a list."""
+    rendered = _resolve_safety_ignores(identity={"safety_ignores": "SFTY-19700101-00001"})
+    assert "--ignore SFTY-19700101-00001" in rendered
+
+
+def test_safety_ignores_does_not_repeat_a_baseline_entry() -> None:
+    """A repo naming a baseline id must not emit the flag twice."""
+    advisory = next(iter(_FLEET_SAFETY_IGNORES))
+    rendered = _resolve_safety_ignores(identity={"safety_ignores": [advisory]})
+    assert rendered.count(f"--ignore {advisory}") == 1
+
+
+@pytest.mark.parametrize("value", [None, [], "", ["  "], [""]])
+def test_safety_ignores_ignores_empty_additions(value: object) -> None:
+    """Blank entries must not render a flag with no argument.
+
+    `--ignore` with an empty value would consume the next token, so a stray
+    empty string in the list silently eats part of the command.
+    """
+    rendered = _resolve_safety_ignores(identity={"safety_ignores": value})
+    assert "--ignore \n" not in rendered
+    assert not rendered.endswith("--ignore")
+    assert "--ignore  " not in rendered
+    assert rendered == _resolve_safety_ignores(identity={})
+
+
+def test_safety_ignores_order_is_stable() -> None:
+    """The rendered config must not churn between runs."""
+    identity = {"safety_ignores": ["SFTY-19700101-00002", "SFTY-19700101-00001"]}
+    assert _resolve_safety_ignores(identity) == _resolve_safety_ignores(identity)
+
+
+# --------------------------------------------------------------------------
 # _resolve_check_handlers_ignores
 # --------------------------------------------------------------------------
 
@@ -310,6 +376,41 @@ def test_tomte_tox_show_renders_canonical_blocks(tmp_path: Path) -> None:
     # canonical pins fall through from [project].dependencies parse
     assert "open-autonomy[all]==0.21.19" in out
     assert "open-aea-ledger-ethereum==2.2.1" in out
+
+
+def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
+    tmp_path: Path,
+) -> None:
+    """The baseline has to reach the rendered command, not just the resolver.
+
+    Dropping `$SAFETY_IGNORES` from the canonical tox.ini leaves every
+    `_resolve_safety_ignores` test passing while the scan runs without the
+    flags, so the assertion belongs on the rendered output.
+    """
+    _write_repo_skeleton(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
+    assert result.exit_code == 0, result.output
+    safety_block = result.output.split("[testenv:safety]", 1)[1].split("[testenv:", 1)[0]
+    assert "safety check --policy-file" in safety_block
+    for advisory in _FLEET_SAFETY_IGNORES:
+        assert f"--ignore {advisory}" in safety_block
+
+
+def test_tomte_tox_show_renders_repo_safety_ignores(tmp_path: Path) -> None:
+    """A repo's own `safety_ignores` reach the scan command too."""
+    _write_repo_skeleton(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8")
+        + '\nsafety_ignores = ["SFTY-19700101-00001"]\n',
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
+    assert result.exit_code == 0, result.output
+    safety_block = result.output.split("[testenv:safety]", 1)[1].split("[testenv:", 1)[0]
+    assert "--ignore SFTY-19700101-00001" in safety_block
 
 
 def test_tomte_tox_show_propagates_extensions(tmp_path: Path) -> None:
