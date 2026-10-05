@@ -48,9 +48,8 @@ _KNOWN_FIRST_PARTY = "autonomy"
 
 # Advisories in the safety scanner's own dependency tree, passed to the scan
 # as `--ignore` flags, each mapped to the date its entry must be re-justified
-# by. `[testenv:safety]` installs only safety, so its env holds nothing else
-# (see https://github.com/valory-xyz/tomte/issues/61). The rule for adding an
-# entry is in the README.
+# by. `[testenv:safety]` installs only safety, so its env holds nothing else.
+# The rule for adding an entry is in the README.
 #
 # safety looks ids up verbatim and says nothing when one matches no advisory,
 # so a mistyped id is a silent no-op and the scan fails as if it were absent.
@@ -269,7 +268,7 @@ def _render_pylint_flags(extensions: Dict[str, str], identity: Dict[str, Any]) -
 
 
 def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
-    """`--ignore <id>` flags: the fleet baseline, then `safety_ignores` (str or list)."""
+    """`--ignore <id>` flags: the fleet baseline, then `safety_ignores`."""
     explicit = identity.get("safety_ignores")
     if explicit is None:
         declared: List[Any] = []
@@ -283,18 +282,15 @@ def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
             f"strings, got {type(explicit).__name__}."
         )
     ids: List[str] = list(_FLEET_SAFETY_IGNORES)
-    for index, advisory in enumerate(declared):
-        # Rendered into a command line, so an id carrying a space would add
-        # arguments to the scan rather than name an advisory.
-        if not isinstance(advisory, str) or not _SAFETY_ID_PATTERN.match(
-            advisory.strip()
-        ):
+    for index, entry in enumerate(declared):
+        advisory = entry.strip() if isinstance(entry, str) else ""
+        if not _SAFETY_ID_PATTERN.match(advisory):
             raise click.UsageError(
                 f"[tool.tomte] safety_ignores entry {index} is not an advisory "
-                f"id ({advisory!r}); expected letters, digits, `-` and `_` only."
+                f"id ({entry!r}); expected letters, digits, `-` and `_` only."
             )
-        if advisory.strip() not in ids:
-            ids.append(advisory.strip())
+        if advisory not in ids:
+            ids.append(advisory)
     return " ".join(f"--ignore {advisory}" for advisory in ids)
 
 

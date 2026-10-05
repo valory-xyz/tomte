@@ -260,11 +260,21 @@ def test_safety_ignores_with_nothing_declared_is_the_baseline(value: object) -> 
 
 @pytest.mark.parametrize(
     "value",
-    [5, 0, True, False, 1.5, {"SFTY-19700101-00001": "reason"}, ("SFTY-19700101-00001",)],
+    [
+        5,
+        0,
+        True,
+        False,
+        1.5,
+        {"SFTY-19700101-00001": "reason"},
+        ("SFTY-19700101-00001",),
+    ],
 )
 def test_safety_ignores_rejects_a_value_of_the_wrong_type(value: object) -> None:
     """A table would otherwise iterate as its keys and be accepted silently."""
-    with pytest.raises(click.UsageError, match="safety_ignores must be a string or a list"):
+    with pytest.raises(
+        click.UsageError, match="safety_ignores must be a string or a list"
+    ):
         _resolve_safety_ignores({"safety_ignores": value})
 
 
@@ -283,20 +293,16 @@ def test_safety_ignores_rejects_a_value_of_the_wrong_type(value: object) -> None
         "SFTY-19700101-00001;true",
     ],
 )
-@pytest.mark.parametrize("position", ["only", "first", "last"])
-def test_safety_ignores_rejects_an_entry_that_is_not_an_id(
-    entry: object, position: str
-) -> None:
-    """Ids land on a command line, so anything else changes what the scan runs.
-
-    A space starts a new argument, a comma is safety's own id separator, and
-    braces are tox substitution syntax. None of them may reach the render,
-    wherever in the list they sit.
-    """
-    good = "SFTY-19700101-00009"
-    declared = {"only": [entry], "first": [entry, good], "last": [good, entry]}[position]
+def test_safety_ignores_rejects_an_entry_that_is_not_an_id(entry: object) -> None:
+    """Ids land on a command line, so anything else changes what the scan runs."""
     with pytest.raises(click.UsageError, match="safety_ignores entry"):
-        _resolve_safety_ignores({"safety_ignores": declared})
+        _resolve_safety_ignores({"safety_ignores": [entry]})
+
+
+def test_safety_ignores_rejects_a_bad_entry_after_a_good_one() -> None:
+    """Every entry is checked, not only the first."""
+    with pytest.raises(click.UsageError, match="safety_ignores entry 1"):
+        _resolve_safety_ignores({"safety_ignores": ["SFTY-19700101-00009", "a b"]})
 
 
 def test_fleet_safety_ignores_are_well_formed_ids() -> None:
@@ -306,12 +312,7 @@ def test_fleet_safety_ignores_are_well_formed_ids() -> None:
 
 
 def test_fleet_safety_ignores_are_not_past_their_review_date() -> None:
-    """Flags passed on the command line carry no expiry, so this is the expiry.
-
-    Fails once an entry's date has passed. Re-check that the vulnerable code
-    is still unreachable and that no fixed release exists, then either remove
-    the entry or move its date forward.
-    """
+    """Command-line ignores carry no expiry in safety, so this test is the expiry."""
     overdue = {a: d for a, d in _FLEET_SAFETY_IGNORES.items() if d < date.today()}
     assert not overdue, f"fleet safety ignores past their review date: {overdue}"
 
@@ -436,11 +437,7 @@ def _section(rendered: str, name: str) -> str:
 def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
     tmp_path: Path,
 ) -> None:
-    """The flags have to reach the rendered command, not just the resolver.
-
-    Dropping `$SAFETY_IGNORES` from the canonical tox.ini leaves every
-    `_resolve_safety_ignores` test passing while the scan runs without them.
-    """
+    """The flags have to reach the rendered command, not just the resolver."""
     _write_repo_skeleton(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
