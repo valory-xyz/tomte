@@ -7,6 +7,7 @@ from tomte import __version__
 from tomte.tools.check_copyright import main as check_copyright_main
 from tomte.tools.check_doc_links import main as check_doc_links_main
 from tomte.tools.check_readme import main as check_readme_main
+from tomte.tools.export_safety_requirements import main as export_safety_requirements_main
 from tomte.tools.freeze_dependencies import main as freeze_dependencies_main
 from tomte.tools.freeze_gitleaks import main as freeze_gitleaks_main
 from tomte.tools.render_isort_config import main as render_isort_config_main
@@ -127,6 +128,14 @@ def freeze_dependencies(output_path: Optional[str], exclude_package: Tuple[str, 
     freeze_dependencies_main(output_path=output_path, exclude_packages=exclude_package)
 
 
+@click.command(name="export-safety-requirements")
+@click.option("--output-path", required=True, type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--repo-root", default=".", type=click.Path(file_okay=False, path_type=Path))
+def export_safety_requirements(output_path: Path, repo_root: Path) -> None:
+    """Pin the released packages in the repo's uv.lock or poetry.lock for `safety check -r`."""
+    export_safety_requirements_main(output_path=output_path, repo_root=repo_root)
+
+
 @click.command(name="render-isort-config")
 @click.option("--output", required=True, type=click.Path(), help="Where to write the merged isort.cfg.")
 @click.option("--known-first-party", default="", help="Per-repo `known_first_party` value.")
@@ -169,6 +178,7 @@ cli.add_command(check_security)
 cli.add_command(render_isort_config)
 cli.add_command(render_mypy_config)
 cli.add_command(freeze_gitleaks)
+cli.add_command(export_safety_requirements)
 cli.add_command(tomte_tox)
 
 
