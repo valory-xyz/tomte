@@ -60,11 +60,13 @@ auto-derive from `packages.json`.
 
 By default the `safety` env scans only safety's own virtualenv, which
 says nothing about the repo. Set `safety_scan_lock = true` to scan the
-repo's locked dependencies instead: `tomte tox` exports every released
-package in `uv.lock` (or, failing that, `poetry.lock`) to
-`.tomte-safety-requirements.txt`, and the scan reads only that file. The
-fleet baseline is not applied then, since it covers safety's own
-dependencies. A repo with neither lock fails the env.
+repo's locked dependencies instead: the env runs
+`tomte export-safety-requirements`, which pins every released package in
+`uv.lock` (or, failing that, `poetry.lock`), and the scan reads only that
+export. The fleet baseline is not applied then, since it covers safety's
+own dependencies. A missing or unreadable lock fails the env. A package
+locked from git or a URL is checked as the PyPI release of its version,
+not as its source, and the export names each one.
 
 `safety_ignores` takes an advisory id or a list of them and renders them
 as `--ignore` flags on the `safety` scan, after the fleet baseline in

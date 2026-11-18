@@ -56,7 +56,9 @@ _KNOWN_FIRST_PARTY = "autonomy"
 _FLEET_SAFETY_IGNORES: Dict[str, date] = {
     # nltk, required by safety.
     "SFTY-20260902-58666": date(2027, 1, 5),
-    # filelock, required by safety (`<4.0`); fixed releases need Python 3.11+.
+    # filelock, required by safety (`<4.0`). safety locks with `FileLock`, which
+    # is `UnixFileLock` on Linux; these cover `WindowsFileLock` (72390) and
+    # `StrictSoftFileLock` (54654, 57659). Fixed releases need Python 3.11+.
     "SFTY-20261017-72390": date(2027, 2, 17),
     "SFTY-20261017-54654": date(2027, 2, 17),
     "SFTY-20261017-57659": date(2027, 2, 17),
@@ -107,13 +109,6 @@ ignore = DAR401
 # reference a deterministic path. `.tomte-` prefix because gitleaks accepts
 # `--config=` so we have free choice of filename.
 _RENDERED_GITLEAKS_FILENAME = ".tomte-gitleaks-merged.toml"
-
-# With `safety_scan_lock`, the safety scan reads pins from this file instead
-# of its own venv. It is exported from the first lockfile in `_LOCKFILES`.
-_RENDERED_SAFETY_REQUIREMENTS_FILENAME = ".tomte-safety-requirements.txt"
-_LOCKFILES = ("uv.lock", "poetry.lock")
-# Lock sources (uv keys, poetry `type`s) that are local code, not a release.
-_LOCAL_LOCK_SOURCES = {"editable", "virtual", "directory", "path", "file"}
 
 # PEP 508 dep matcher — extracts the leftmost package name token. Used to
 # classify deps for the auto-derived [tomte-extensions] extra_deps.
@@ -288,6 +283,18 @@ def _resolve_safety_scan_lock(identity: Dict[str, Any]) -> bool:
     return explicit
 
 
+def _resolve_safety_lock_scan(identity: Dict[str, Any]) -> Dict[str, str]:
+    if not _resolve_safety_scan_lock(identity):
+        return {"SAFETY_EXTRAS": "", "SAFETY_EXPORT": "", "SAFETY_REQUIREMENTS": ""}
+    requirements = "{envtmpdir}/safety-requirements.txt"
+    return {
+        # Kept out of the default scan, which would report the CLI's deps.
+        "SAFETY_EXTRAS": ",cli",
+        "SAFETY_EXPORT": f"tomte export-safety-requirements --output-path {requirements}",
+        "SAFETY_REQUIREMENTS": f"-r {requirements}",
+    }
+
+
 def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
     """`--ignore <id>` flags: the fleet baseline, then `safety_ignores`."""
     explicit = identity.get("safety_ignores")
@@ -315,29 +322,6 @@ def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
         if advisory not in ids:
             ids.append(advisory)
     return " ".join(f"--ignore {advisory}" for advisory in ids)
-
-
-def _render_safety_requirements(repo_root: Path) -> Optional[str]:
-    """`name==version` for each released package in the repo's lock, or None."""
-    lock_path = next(
-        (repo_root / name for name in _LOCKFILES if (repo_root / name).is_file()),
-        None,
-    )
-    if lock_path is None:
-        return None
-    try:
-        with lock_path.open("rb") as fh:
-            lock = tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise click.UsageError(f"Cannot read {lock_path}: {exc}") from exc
-    pins: Set[str] = set()
-    for package in lock.get("package", []):
-        source = package.get("source", {})
-        if _LOCAL_LOCK_SOURCES & {*source, source.get("type")}:
-            continue
-        if "name" in package and "version" in package:
-            pins.add(f"{package['name']}=={package['version']}")
-    return "".join(f"{pin}\n" for pin in sorted(pins))
 
 
 def _join_listish(value: Union[str, Sequence[str]]) -> str:
@@ -784,11 +768,7 @@ def _build_substitutions(
             identity
         ),
         "SAFETY_IGNORES": _resolve_safety_ignores(identity),
-        "SAFETY_REQUIREMENTS": (
-            f"-r {{toxinidir}}/{_RENDERED_SAFETY_REQUIREMENTS_FILENAME}"
-            if _resolve_safety_scan_lock(identity)
-            else ""
-        ),
+        **_resolve_safety_lock_scan(identity),
         "EXTRA_DEPS_PACKAGES": _reindent(
             _resolve_extra_deps(pyproject, extensions), _DEPS_INDENT
         ),
@@ -889,10 +869,9 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
     Reads `[tool.tomte]` from `<repo-root>/pyproject.toml` and (if a local
     `tox.ini` exists, or `local_extensions` is set explicitly) the
     `[tomte-extensions]` section from it. Renders tomte's canonical tox.ini
-    into a temp file in the repo root, writes the companion `.darglint`,
-    `.tomte-gitleaks-merged.toml` and (with `safety_scan_lock`)
-    `.tomte-safety-requirements.txt` files
-    the canonical envs reference, then invokes `tox -c <temp> <tox_args>`.
+    into a temp file in the repo root, writes companion `.darglint` /
+    `.tomte-gitleaks-merged.toml` files the canonical envs reference, then
+    invokes `tox -c <temp> <tox_args>`.
     """
     repo_root = repo_root.resolve()
     pyproject = _read_pyproject(repo_root)
@@ -914,7 +893,6 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
     rendered_path = repo_root / _RENDERED_TOX_FILENAME
     darglint_path = repo_root / _RENDERED_DARGLINT_FILENAME
     gitleaks_path = repo_root / _RENDERED_GITLEAKS_FILENAME
-    safety_path = repo_root / _RENDERED_SAFETY_REQUIREMENTS_FILENAME
 
     # Refuse to clobber non-managed files with our reserved names. Catches
     # both pre-existing user files and concurrent runs in the same checkout
@@ -923,7 +901,6 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
     _assert_managed_or_absent(rendered_path, ".tomte-tox.ini")
     _assert_managed_or_absent(darglint_path, ".darglint")
     _assert_managed_or_absent(gitleaks_path, ".tomte-gitleaks-merged.toml")
-    _assert_managed_or_absent(safety_path, _RENDERED_SAFETY_REQUIREMENTS_FILENAME)
 
     try:
         # Writes happen inside `try` so any failure between here and tox
@@ -934,21 +911,11 @@ def tomte_tox(repo_root: Path, show: bool, tox_args: Tuple[str, ...]) -> None:
         _write_managed_sidecar(
             gitleaks_path, _render_gitleaks_merged(repo_root, identity)
         )
-        if _resolve_safety_scan_lock(identity):
-            safety_requirements = _render_safety_requirements(repo_root)
-            if safety_requirements is None:
-                click.echo(
-                    f"warning: no {' or '.join(_LOCKFILES)} in {repo_root}; "
-                    f"the safety env has nothing to scan and will fail.",
-                    err=True,
-                )
-            else:
-                _write_managed_sidecar(safety_path, safety_requirements)
         cmd = ["tox", "-c", str(rendered_path)] + list(tox_args)
         result = subprocess.run(cmd, cwd=repo_root, check=False)
         sys.exit(result.returncode)
     finally:
-        for path in (rendered_path, darglint_path, gitleaks_path, safety_path):
+        for path in (rendered_path, darglint_path, gitleaks_path):
             try:
                 path.unlink()
             except FileNotFoundError:

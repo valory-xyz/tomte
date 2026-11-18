@@ -16,9 +16,9 @@
 # repo's own `safety_ignores` in `[tool.tomte]`.
 #
 # Coverage: by default the scan inspects safety's own virtualenv, not the
-# consuming repo. With `safety_scan_lock = true` in `[tool.tomte]`, `tomte tox`
-# exports the repo's uv.lock (or poetry.lock) to
-# `.tomte-safety-requirements.txt`, and the scan reads only that file.
+# consuming repo. With `safety_scan_lock = true` in `[tool.tomte]`, the env
+# exports the repo's uv.lock (or poetry.lock) with
+# `tomte export-safety-requirements` and scans only that export.
 
 security:
   ignore-vulnerabilities: {}

@@ -50,7 +50,6 @@ from tomte.tools.tox_runtime import (
     _drop_ini_section,
     _render_gitleaks_merged,
     _render_pylint_flags,
-    _render_safety_requirements,
     _resolve_safety_scan_lock,
     _resolve_check_handlers_ignores,
     _resolve_pytest_targets,
@@ -448,7 +447,7 @@ def _set_tomte_keys(repo_root: Path, keys: str) -> None:
     ("scan_lock", "target", "baseline"),
     [
         ("false", "", list(_FLEET_SAFETY_IGNORES)),
-        ("true", "-r {toxinidir}/.tomte-safety-requirements.txt ", []),
+        ("true", "-r {envtmpdir}/safety-requirements.txt ", []),
     ],
 )
 def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
@@ -472,6 +471,15 @@ def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
         f"safety check {target}--policy-file "
         "{envsitepackagesdir}/tomte/configs/safety-policy.yml "
         + " ".join(f"--ignore {a}" for a in [*baseline, "SFTY-19700101-00001"])
+    ]
+    section = _section(result.output, "testenv:safety")
+    assert f"tomte[safety{',cli' if target else ''}]" in section
+    export = [line.strip() for line in section.splitlines() if line.startswith("commands_pre")]
+    assert export == [
+        "commands_pre = tomte export-safety-requirements --output-path "
+        "{envtmpdir}/safety-requirements.txt"
+        if target
+        else "commands_pre ="
     ]
 
 
@@ -604,136 +612,6 @@ def test_tomte_tox_overwrites_managed_sidecar(tmp_path: Path, monkeypatch) -> No
     assert captured.get("cmd", [None])[0] == "tox"
     # `.darglint` was rewritten by the wrapper before tox ran.
     assert captured.get("sidecar_present") is True
-
-
-# --------------------------------------------------------------------------
-# safety: scan the repo's lock
-# --------------------------------------------------------------------------
-
-_UV_LOCK = """\
-version = 1
-
-[[package]]
-name = "fakerepo"
-version = "0.1.0"
-source = { editable = "." }
-
-[[package]]
-name = "workspace-member"
-version = "0.1.0"
-source = { virtual = "member" }
-
-[[package]]
-name = "urllib3"
-version = "2.6.3"
-source = { registry = "https://pypi.org/simple" }
-
-[[package]]
-name = "google-api-core"
-version = "2.25.0"
-source = { registry = "https://pypi.org/simple" }
-
-[[package]]
-name = "google-api-core"
-version = "2.24.0"
-source = { registry = "https://pypi.org/simple" }
-
-[[package]]
-name = "tomte"
-version = "0.7.3"
-source = { git = "https://github.com/valory-xyz/tomte.git?rev=v0.7.3" }
-"""
-
-_POETRY_LOCK = """\
-[[package]]
-name = "filelock"
-version = "3.20.0"
-
-[[package]]
-name = "localpkg"
-version = "0.1.0"
-
-[package.source]
-type = "directory"
-url = "localpkg"
-"""
-
-
-def test_safety_requirements_pin_released_packages_from_uv_lock(tmp_path: Path) -> None:
-    """Local sources are the repo itself; every other version is pinned."""
-    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
-    assert _render_safety_requirements(tmp_path) == (
-        "google-api-core==2.24.0\n"
-        "google-api-core==2.25.0\n"
-        "tomte==0.7.3\n"
-        "urllib3==2.6.3\n"
-    )
-
-
-def test_safety_requirements_read_poetry_lock(tmp_path: Path) -> None:
-    (tmp_path / "poetry.lock").write_text(_POETRY_LOCK, encoding="utf-8")
-    assert _render_safety_requirements(tmp_path) == "filelock==3.20.0\n"
-
-
-def test_safety_requirements_prefer_uv_lock(tmp_path: Path) -> None:
-    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
-    (tmp_path / "poetry.lock").write_text(_POETRY_LOCK, encoding="utf-8")
-    assert "filelock" not in (_render_safety_requirements(tmp_path) or "")
-
-
-def test_safety_requirements_absent_without_a_lock(tmp_path: Path) -> None:
-    assert _render_safety_requirements(tmp_path) is None
-
-
-def test_safety_requirements_reject_a_malformed_lock(tmp_path: Path) -> None:
-    (tmp_path / "uv.lock").write_text("[[package]\n", encoding="utf-8")
-    with pytest.raises(click.UsageError, match="Cannot read"):
-        _render_safety_requirements(tmp_path)
-
-
-def _run_tomte_tox_capturing(tmp_path: Path, monkeypatch) -> dict:
-    captured: dict = {}
-
-    class _FakeResult:
-        returncode = 0
-
-    def _fake_run(cmd, **kwargs):
-        path = tmp_path / ".tomte-safety-requirements.txt"
-        captured["requirements"] = path.read_text(encoding="utf-8") if path.is_file() else None
-        return _FakeResult()
-
-    monkeypatch.setattr("tomte.tools.tox_runtime.shutil.which", lambda _: "/nonexistent/tox")
-    monkeypatch.setattr("tomte.tools.tox_runtime.subprocess.run", _fake_run)
-    captured["result"] = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path)])
-    return captured
-
-
-def test_tomte_tox_writes_safety_requirements_then_removes_them(tmp_path: Path, monkeypatch) -> None:
-    _write_repo_skeleton(tmp_path)
-    _set_tomte_keys(tmp_path, "safety_scan_lock = true")
-    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
-    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
-    assert captured["result"].exit_code == 0, captured["result"].output
-    assert captured["requirements"].startswith(_MANAGED_MARKER)
-    assert "urllib3==2.6.3\n" in captured["requirements"]
-    assert not (tmp_path / ".tomte-safety-requirements.txt").exists()
-
-
-def test_tomte_tox_skips_safety_requirements_by_default(tmp_path: Path, monkeypatch) -> None:
-    _write_repo_skeleton(tmp_path)
-    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
-    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
-    assert captured["result"].exit_code == 0, captured["result"].output
-    assert captured["requirements"] is None
-
-
-def test_tomte_tox_warns_when_there_is_no_lock(tmp_path: Path, monkeypatch) -> None:
-    _write_repo_skeleton(tmp_path)
-    _set_tomte_keys(tmp_path, "safety_scan_lock = true")
-    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
-    assert captured["result"].exit_code == 0, captured["result"].output
-    assert captured["requirements"] is None
-    assert "the safety env has nothing to scan" in captured["result"].output
 
 
 # --------------------------------------------------------------------------
