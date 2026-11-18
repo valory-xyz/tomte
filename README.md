@@ -55,18 +55,15 @@ drop-in replacement: `tomte tox -e <env>`.
 `known_first_party`, `open_autonomy_version`, `open_aea_version`,
 `check_handlers_ignores`, `check_dependencies_extra_excludes`,
 `upstream_pins`, `gitleaks_extra_paths`, `gitleaks_extra_regexes`,
-`safety_ignores`, `safety_scan_lock`, `tomte_dep_pin`. Most defaults
+`safety_ignores`, `tomte_dep_pin`. Most defaults
 auto-derive from `packages.json`.
 
-By default the `safety` env scans only safety's own virtualenv, which
-says nothing about the repo. Set `safety_scan_lock = true` to scan the
-repo's locked dependencies instead: the env runs
+The `safety` env scans the repo's locked dependencies: it runs
 `tomte export-safety-requirements`, which pins every released package in
 `uv.lock` (or, failing that, `poetry.lock`), and the scan reads only that
-export. The fleet baseline is not applied then, since it covers safety's
-own dependencies. A missing or unreadable lock fails the env. A package
-locked from git or a URL is checked as the PyPI release of its version,
-not as its source, and the export names each one.
+export, not safety's own virtualenv. A missing or unreadable lock fails
+the env. A package locked from git or a URL is checked as the PyPI
+release of its version, not as its source, and the export names each one.
 
 `safety_ignores` takes an advisory id or a list of them and renders them
 as `--ignore` flags on the `safety` scan, after the fleet baseline in

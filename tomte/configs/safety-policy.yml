@@ -15,9 +15,7 @@
 # baseline in `_FLEET_SAFETY_IGNORES` (tomte/tools/tox_runtime.py) plus a
 # repo's own `safety_ignores` in `[tool.tomte]`.
 #
-# Coverage: by default the scan inspects safety's own virtualenv, not the
-# consuming repo. With `safety_scan_lock = true` in `[tool.tomte]`, the env
-# exports the repo's uv.lock (or poetry.lock) with
+# Coverage: the env exports the repo's uv.lock (or poetry.lock) with
 # `tomte export-safety-requirements` and scans only that export.
 
 security:

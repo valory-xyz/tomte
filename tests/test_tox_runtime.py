@@ -50,7 +50,6 @@ from tomte.tools.tox_runtime import (
     _drop_ini_section,
     _render_gitleaks_merged,
     _render_pylint_flags,
-    _resolve_safety_scan_lock,
     _resolve_check_handlers_ignores,
     _resolve_pytest_targets,
     _resolve_safety_ignores,
@@ -443,49 +442,23 @@ def _set_tomte_keys(repo_root: Path, keys: str) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("scan_lock", "target", "baseline"),
-    [
-        ("false", "", list(_FLEET_SAFETY_IGNORES)),
-        ("true", "-r {envtmpdir}/safety-requirements.txt ", []),
-    ],
-)
-def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
-    tmp_path: Path, scan_lock: str, target: str, baseline: List[str]
-) -> None:
+def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(tmp_path: Path) -> None:
     """The flags have to reach the rendered command, not just the resolver."""
     _write_repo_skeleton(tmp_path)
-    _set_tomte_keys(
-        tmp_path,
-        f'safety_ignores = ["SFTY-19700101-00001"]\nsafety_scan_lock = {scan_lock}',
-    )
+    _set_tomte_keys(tmp_path, 'safety_ignores = ["SFTY-19700101-00001"]')
     result = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
     assert result.exit_code == 0, result.output
-    # An empty substitution leaves a double space, which tox ignores.
-    scan = [
-        " ".join(line.split())
-        for line in _section(result.output, "testenv:safety").splitlines()
-        if line.strip().startswith("safety check")
-    ]
-    assert scan == [
-        f"safety check {target}--policy-file "
-        "{envsitepackagesdir}/tomte/configs/safety-policy.yml "
-        + " ".join(f"--ignore {a}" for a in [*baseline, "SFTY-19700101-00001"])
-    ]
     section = _section(result.output, "testenv:safety")
-    assert f"tomte[safety{',cli' if target else ''}]" in section
-    export = [line.strip() for line in section.splitlines() if line.startswith("commands_pre")]
-    assert export == [
+    scan = [line.strip() for line in section.splitlines() if line.strip().startswith("safety check")]
+    assert scan == [
+        "safety check -r {envtmpdir}/safety-requirements.txt --policy-file "
+        "{envsitepackagesdir}/tomte/configs/safety-policy.yml "
+        + _ignore_flags("SFTY-19700101-00001")
+    ]
+    assert (
         "commands_pre = tomte export-safety-requirements --output-path "
         "{envtmpdir}/safety-requirements.txt"
-        if target
-        else "commands_pre ="
-    ]
-
-
-def test_safety_scan_lock_rejects_a_non_boolean() -> None:
-    with pytest.raises(click.UsageError, match="safety_scan_lock must be true or false"):
-        _resolve_safety_scan_lock({"safety_scan_lock": "yes"})
+    ) in section
 
 
 def test_tomte_tox_reports_a_bad_safety_ignore_as_a_usage_error(tmp_path: Path) -> None:

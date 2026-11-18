@@ -46,23 +46,13 @@ from tomte.tools.packages_json import (
 # moved here because they never vary across consumers downstream of OA.
 _KNOWN_FIRST_PARTY = "autonomy"
 
-# Advisories in the safety scanner's own dependency tree, passed as `--ignore`
-# flags to the default scan of its venv, each mapped to the date its entry
-# must be re-justified by. Not applied with `safety_scan_lock`, which does not
-# scan that venv. The rule for adding an entry is in the README.
+# Advisories ignored in every repo's scan, passed as `--ignore` flags, each
+# mapped to the date its entry must be re-justified by. The rule for adding an
+# entry is in the README.
 #
 # safety looks ids up verbatim and says nothing when one matches no advisory,
 # so a mistyped id is a silent no-op and the scan fails as if it were absent.
-_FLEET_SAFETY_IGNORES: Dict[str, date] = {
-    # nltk, required by safety.
-    "SFTY-20260902-58666": date(2027, 1, 5),
-    # filelock, required by safety (`<4.0`). safety locks with `FileLock`, which
-    # is `UnixFileLock` on Linux; these cover `WindowsFileLock` (72390) and
-    # `StrictSoftFileLock` (54654, 57659). Fixed releases need Python 3.11+.
-    "SFTY-20261017-72390": date(2027, 2, 17),
-    "SFTY-20261017-54654": date(2027, 2, 17),
-    "SFTY-20261017-57659": date(2027, 2, 17),
-}
+_FLEET_SAFETY_IGNORES: Dict[str, date] = {}
 
 # What an advisory id may contain. Ids are rendered into a tox command line,
 # where whitespace starts a new argument and braces are substitution syntax.
@@ -273,28 +263,6 @@ def _render_pylint_flags(extensions: Dict[str, str], identity: Dict[str, Any]) -
     return " ".join(flags)
 
 
-def _resolve_safety_scan_lock(identity: Dict[str, Any]) -> bool:
-    explicit = identity.get("safety_scan_lock", False)
-    if not isinstance(explicit, bool):
-        raise click.UsageError(
-            f"[tool.tomte] safety_scan_lock must be true or false, "
-            f"got {type(explicit).__name__}."
-        )
-    return explicit
-
-
-def _resolve_safety_lock_scan(identity: Dict[str, Any]) -> Dict[str, str]:
-    if not _resolve_safety_scan_lock(identity):
-        return {"SAFETY_EXTRAS": "", "SAFETY_EXPORT": "", "SAFETY_REQUIREMENTS": ""}
-    requirements = "{envtmpdir}/safety-requirements.txt"
-    return {
-        # Kept out of the default scan, which would report the CLI's deps.
-        "SAFETY_EXTRAS": ",cli",
-        "SAFETY_EXPORT": f"tomte export-safety-requirements --output-path {requirements}",
-        "SAFETY_REQUIREMENTS": f"-r {requirements}",
-    }
-
-
 def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
     """`--ignore <id>` flags: the fleet baseline, then `safety_ignores`."""
     explicit = identity.get("safety_ignores")
@@ -309,9 +277,7 @@ def _resolve_safety_ignores(identity: Dict[str, Any]) -> str:
             f"[tool.tomte] safety_ignores must be a string or a list of "
             f"strings, got {type(explicit).__name__}."
         )
-    ids: List[str] = (
-        [] if _resolve_safety_scan_lock(identity) else list(_FLEET_SAFETY_IGNORES)
-    )
+    ids: List[str] = list(_FLEET_SAFETY_IGNORES)
     for index, entry in enumerate(declared):
         advisory = entry.strip() if isinstance(entry, str) else ""
         if not _SAFETY_ID_PATTERN.match(advisory):
@@ -768,7 +734,6 @@ def _build_substitutions(
             identity
         ),
         "SAFETY_IGNORES": _resolve_safety_ignores(identity),
-        **_resolve_safety_lock_scan(identity),
         "EXTRA_DEPS_PACKAGES": _reindent(
             _resolve_extra_deps(pyproject, extensions), _DEPS_INDENT
         ),
