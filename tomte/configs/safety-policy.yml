@@ -15,9 +15,10 @@
 # baseline in `_FLEET_SAFETY_IGNORES` (tomte/tools/tox_runtime.py) plus a
 # repo's own `safety_ignores` in `[tool.tomte]`.
 #
-# Coverage: [testenv:safety] installs only safety, so the scan inspects the
-# scanner's own virtualenv and reports nothing about the consuming repo's
-# dependencies. Tracked in https://github.com/valory-xyz/tomte/issues/61.
+# Coverage: by default the scan inspects safety's own virtualenv, not the
+# consuming repo. With `safety_scan_lock = true` in `[tool.tomte]`, `tomte tox`
+# exports the repo's uv.lock (or poetry.lock) to
+# `.tomte-safety-requirements.txt`, and the scan reads only that file.
 
 security:
   ignore-vulnerabilities: {}

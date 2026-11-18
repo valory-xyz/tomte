@@ -50,6 +50,8 @@ from tomte.tools.tox_runtime import (
     _drop_ini_section,
     _render_gitleaks_merged,
     _render_pylint_flags,
+    _render_safety_requirements,
+    _resolve_safety_scan_lock,
     _resolve_check_handlers_ignores,
     _resolve_pytest_targets,
     _resolve_safety_ignores,
@@ -237,9 +239,10 @@ def test_safety_ignores_accepts_a_bare_string() -> None:
     assert rendered == _ignore_flags("SFTY-19700101-00001")
 
 
-def test_safety_ignores_does_not_repeat_an_id() -> None:
+def test_safety_ignores_does_not_repeat_an_id(monkeypatch) -> None:
     """Naming a baseline id, or one id twice, must not emit a flag twice."""
-    baseline = next(iter(_FLEET_SAFETY_IGNORES))
+    baseline = "SFTY-19700101-00000"
+    monkeypatch.setitem(_FLEET_SAFETY_IGNORES, baseline, date.max)
     rendered = _resolve_safety_ignores(
         {"safety_ignores": [baseline, "SFTY-19700101-00001", "SFTY-19700101-00001"]}
     )
@@ -434,29 +437,47 @@ def _section(rendered: str, name: str) -> str:
     return match.group(1)
 
 
+def _set_tomte_keys(repo_root: Path, keys: str) -> None:
+    pyproject = repo_root / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8") + f"\n{keys}\n", encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("scan_lock", "target", "baseline"),
+    [
+        ("false", "", list(_FLEET_SAFETY_IGNORES)),
+        ("true", "-r {toxinidir}/.tomte-safety-requirements.txt ", []),
+    ],
+)
 def test_tomte_tox_show_renders_the_safety_ignores_into_the_scan(
-    tmp_path: Path,
+    tmp_path: Path, scan_lock: str, target: str, baseline: List[str]
 ) -> None:
     """The flags have to reach the rendered command, not just the resolver."""
     _write_repo_skeleton(tmp_path)
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        pyproject.read_text(encoding="utf-8")
-        + '\nsafety_ignores = ["SFTY-19700101-00001"]\n',
-        encoding="utf-8",
+    _set_tomte_keys(
+        tmp_path,
+        f'safety_ignores = ["SFTY-19700101-00001"]\nsafety_scan_lock = {scan_lock}',
     )
     result = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path), "--show"])
     assert result.exit_code == 0, result.output
+    # An empty substitution leaves a double space, which tox ignores.
     scan = [
-        line.strip()
+        " ".join(line.split())
         for line in _section(result.output, "testenv:safety").splitlines()
         if line.strip().startswith("safety check")
     ]
     assert scan == [
-        "safety check --policy-file "
+        f"safety check {target}--policy-file "
         "{envsitepackagesdir}/tomte/configs/safety-policy.yml "
-        + _ignore_flags("SFTY-19700101-00001")
+        + " ".join(f"--ignore {a}" for a in [*baseline, "SFTY-19700101-00001"])
     ]
+
+
+def test_safety_scan_lock_rejects_a_non_boolean() -> None:
+    with pytest.raises(click.UsageError, match="safety_scan_lock must be true or false"):
+        _resolve_safety_scan_lock({"safety_scan_lock": "yes"})
 
 
 def test_tomte_tox_reports_a_bad_safety_ignore_as_a_usage_error(tmp_path: Path) -> None:
@@ -583,6 +604,136 @@ def test_tomte_tox_overwrites_managed_sidecar(tmp_path: Path, monkeypatch) -> No
     assert captured.get("cmd", [None])[0] == "tox"
     # `.darglint` was rewritten by the wrapper before tox ran.
     assert captured.get("sidecar_present") is True
+
+
+# --------------------------------------------------------------------------
+# safety: scan the repo's lock
+# --------------------------------------------------------------------------
+
+_UV_LOCK = """\
+version = 1
+
+[[package]]
+name = "fakerepo"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "workspace-member"
+version = "0.1.0"
+source = { virtual = "member" }
+
+[[package]]
+name = "urllib3"
+version = "2.6.3"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "google-api-core"
+version = "2.25.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "google-api-core"
+version = "2.24.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "tomte"
+version = "0.7.3"
+source = { git = "https://github.com/valory-xyz/tomte.git?rev=v0.7.3" }
+"""
+
+_POETRY_LOCK = """\
+[[package]]
+name = "filelock"
+version = "3.20.0"
+
+[[package]]
+name = "localpkg"
+version = "0.1.0"
+
+[package.source]
+type = "directory"
+url = "localpkg"
+"""
+
+
+def test_safety_requirements_pin_released_packages_from_uv_lock(tmp_path: Path) -> None:
+    """Local sources are the repo itself; every other version is pinned."""
+    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
+    assert _render_safety_requirements(tmp_path) == (
+        "google-api-core==2.24.0\n"
+        "google-api-core==2.25.0\n"
+        "tomte==0.7.3\n"
+        "urllib3==2.6.3\n"
+    )
+
+
+def test_safety_requirements_read_poetry_lock(tmp_path: Path) -> None:
+    (tmp_path / "poetry.lock").write_text(_POETRY_LOCK, encoding="utf-8")
+    assert _render_safety_requirements(tmp_path) == "filelock==3.20.0\n"
+
+
+def test_safety_requirements_prefer_uv_lock(tmp_path: Path) -> None:
+    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
+    (tmp_path / "poetry.lock").write_text(_POETRY_LOCK, encoding="utf-8")
+    assert "filelock" not in (_render_safety_requirements(tmp_path) or "")
+
+
+def test_safety_requirements_absent_without_a_lock(tmp_path: Path) -> None:
+    assert _render_safety_requirements(tmp_path) is None
+
+
+def test_safety_requirements_reject_a_malformed_lock(tmp_path: Path) -> None:
+    (tmp_path / "uv.lock").write_text("[[package]\n", encoding="utf-8")
+    with pytest.raises(click.UsageError, match="Cannot read"):
+        _render_safety_requirements(tmp_path)
+
+
+def _run_tomte_tox_capturing(tmp_path: Path, monkeypatch) -> dict:
+    captured: dict = {}
+
+    class _FakeResult:
+        returncode = 0
+
+    def _fake_run(cmd, **kwargs):
+        path = tmp_path / ".tomte-safety-requirements.txt"
+        captured["requirements"] = path.read_text(encoding="utf-8") if path.is_file() else None
+        return _FakeResult()
+
+    monkeypatch.setattr("tomte.tools.tox_runtime.shutil.which", lambda _: "/nonexistent/tox")
+    monkeypatch.setattr("tomte.tools.tox_runtime.subprocess.run", _fake_run)
+    captured["result"] = CliRunner().invoke(tomte_tox, ["--repo-root", str(tmp_path)])
+    return captured
+
+
+def test_tomte_tox_writes_safety_requirements_then_removes_them(tmp_path: Path, monkeypatch) -> None:
+    _write_repo_skeleton(tmp_path)
+    _set_tomte_keys(tmp_path, "safety_scan_lock = true")
+    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
+    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
+    assert captured["result"].exit_code == 0, captured["result"].output
+    assert captured["requirements"].startswith(_MANAGED_MARKER)
+    assert "urllib3==2.6.3\n" in captured["requirements"]
+    assert not (tmp_path / ".tomte-safety-requirements.txt").exists()
+
+
+def test_tomte_tox_skips_safety_requirements_by_default(tmp_path: Path, monkeypatch) -> None:
+    _write_repo_skeleton(tmp_path)
+    (tmp_path / "uv.lock").write_text(_UV_LOCK, encoding="utf-8")
+    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
+    assert captured["result"].exit_code == 0, captured["result"].output
+    assert captured["requirements"] is None
+
+
+def test_tomte_tox_warns_when_there_is_no_lock(tmp_path: Path, monkeypatch) -> None:
+    _write_repo_skeleton(tmp_path)
+    _set_tomte_keys(tmp_path, "safety_scan_lock = true")
+    captured = _run_tomte_tox_capturing(tmp_path, monkeypatch)
+    assert captured["result"].exit_code == 0, captured["result"].output
+    assert captured["requirements"] is None
+    assert "the safety env has nothing to scan" in captured["result"].output
 
 
 # --------------------------------------------------------------------------
